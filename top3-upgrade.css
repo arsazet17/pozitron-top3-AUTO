@@ -1,0 +1,106 @@
+
+/* TOP-3 AUTO v1.1.0 — постоянный архив / тройники / алгоритм */
+
+.archive-tabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:14px 0;
+}
+.archive-tab{
+  border:1px solid rgba(255,255,255,.12);
+  background:#0c1a2c;
+  color:#d9e7f8;
+  border-radius:10px;
+  padding:9px 12px;
+  cursor:pointer;
+}
+.archive-tab.active{
+  background:#15345a;
+  border-color:#3d78b6;
+}
+.forecast-archive-card{
+  border:1px solid rgba(255,255,255,.10);
+  background:#081728;
+  border-radius:12px;
+  margin:8px 0;
+  overflow:hidden;
+}
+.forecast-archive-card>summary{
+  cursor:pointer;
+  list-style:none;
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:center;
+  padding:12px 14px;
+}
+.forecast-archive-card>summary::-webkit-details-marker{display:none}
+.forecast-archive-card>summary span{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.forecast-archive-card>summary small{opacity:.65}
+.forecast-archive-card>summary strong{white-space:nowrap}
+.forecast-snapshot{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  padding:12px 14px;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+.forecast-snapshot>div{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  padding:9px 10px;
+  background:rgba(255,255,255,.03);
+  border-radius:9px;
+}
+.forecast-snapshot span{opacity:.65;font-size:.83rem}
+.forecast-snapshot b{overflow-wrap:anywhere}
+.forecast-full-detail{padding:12px 14px}
+.raw-block{
+  margin-top:12px;
+  border-top:1px solid rgba(255,255,255,.08);
+  padding-top:10px;
+}
+.raw-block h4{margin:0 0 8px}
+.raw-block details{
+  background:rgba(255,255,255,.025);
+  border-radius:8px;
+  padding:8px 10px;
+  margin:6px 0;
+}
+.raw-block summary{cursor:pointer}
+.raw-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:7px 0;
+  border-top:1px solid rgba(255,255,255,.05);
+}
+.raw-row b{text-align:right;overflow-wrap:anywhere}
+.system-log{display:grid;gap:7px}
+.tfc-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:9px 10px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.tfc-row span{opacity:.7}
+.tfc-empty{
+  padding:18px;
+  text-align:center;
+  opacity:.7;
+}
+[hidden]{display:none!important}
+
+@media (max-width:760px){
+  .forecast-snapshot{grid-template-columns:1fr}
+  .forecast-archive-card>summary{align-items:flex-start}
+  .raw-row,.tfc-row{flex-direction:column}
+}
