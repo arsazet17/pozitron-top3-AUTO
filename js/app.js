@@ -35,12 +35,12 @@ function makeCtx(){
   return {...ctx,state,records,target,current,mirror,mirrorPred,shift,extras};
 }
 function render(){
-  const c=makeCtx(); ctx=c;
+  const c=makeCtx(); ctx=c; window.TOP3_AUTO_CTX=c;
   const renderers={home:renderHome,forecasts:renderForecasts,archive:renderArchive,algorithm:renderAlgorithm,mirror:renderMirror,stats:renderStats,settings:renderSettings};
   document.querySelector("#main").innerHTML=(renderers[page]||renderHome)(c);
   document.querySelectorAll(".nav").forEach(n=>n.classList.toggle("active",n.dataset.page===page));
   ({home:mountedHome,forecasts:mountedForecasts,archive:mountedArchive}[page]||(()=>{}))(c);
-  archiveCurrent(c);
+  archiveCurrent(c); window.dispatchEvent(new CustomEvent('top3-auto-render',{detail:c}));
 }
 function allForecastCombos(h){
   const out=[]; for(const block of ["TOP","DELTA","NUMBERS"])for(let i=0;i<4;i++)if(h.forecast?.[block]?.[i])out.push({block,variant:["V1","V2","V3","GG"][i],combo:h.forecast[block][i]});

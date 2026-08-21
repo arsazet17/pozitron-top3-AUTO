@@ -4,6 +4,15 @@ const schedule=["02:40","04:40","06:40","07:40","09:40","11:40","13:40","16:25",
 const monthMap={января:1,февраля:2,марта:3,апреля:4,мая:5,июня:6,июля:7,августа:8,сентября:9,октября:10,ноября:11,декабря:12};
 function strip(s){return s.replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/&nbsp;|&#160;/g," ").replace(/\s+/g," ").trim()}
 function isoDate(day,mon,year){return `${year}-${String(monthMap[mon.toLowerCase()]).padStart(2,"0")}-${String(day).padStart(2,"0")}`}
+
+function resultTimeHasArrived(date,time){
+  const [y,m,d]=String(date).split("-").map(Number);
+  const [hh,mm]=String(time).split(":").map(Number);
+  if(!y||!m||!d||!Number.isFinite(hh)||!Number.isFinite(mm))return false;
+  const stamp=Date.UTC(y,m-1,d,hh-3,mm);
+  return stamp<=Date.now();
+}
+
 function nextSlot(last){
   const i=schedule.indexOf(last.time), ni=(i+1)%schedule.length;let date=last.date;
   if(ni===0){const d=new Date(date+"T12:00:00+03:00");d.setDate(d.getDate()+1);date=d.toISOString().slice(0,10)}
@@ -22,7 +31,7 @@ const archive=JSON.parse(fs.readFileSync("data/archive.json","utf8")), last=arch
 const res=await fetch(SOURCE,{headers:{"user-agent":"Mozilla/5.0 TOP3-AUTO/1.0"},redirect:"follow"});if(!res.ok)throw new Error("Stoloto HTTP "+res.status);
 const p=parse(await res.text());
 if(p.combo===last.combo && p.date===last.date){console.log("Нет нового результата");process.exit(0)}
-const slot=nextSlot(last); const rec={date:p.date||slot.date,time:slot.time,A:+p.combo[0],B:+p.combo[1],C:+p.combo[2],combo:p.combo,draw:p.draw};
+const slot=nextSlot(last); if(!resultTimeHasArrived(p.date||slot.date,slot.time)){console.log("Тираж ещё не наступил — факт не сохраняем",p.date||slot.date,slot.time,p.combo);process.exit(0)} const rec={date:p.date||slot.date,time:slot.time,A:+p.combo[0],B:+p.combo[1],C:+p.combo[2],combo:p.combo,draw:p.draw};
 archive.push(rec);fs.writeFileSync("data/archive.json",JSON.stringify(archive));
 fs.writeFileSync("data/latest.json",JSON.stringify({updatedAt:new Date().toISOString(),draw:rec},null,2));
 console.log("Добавлен",rec);
