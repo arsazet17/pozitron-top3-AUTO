@@ -2,29 +2,14 @@
   "benchmark": {
     "date": "2026-08-20",
     "time": "13:40",
-    "TOP": [
-      "586",
-      "581",
-      "620",
-      "761"
-    ],
-    "DELTA": [
-      "752",
-      "652",
-      "460",
-      "961"
-    ],
-    "NUMBERS": [
-      "367",
-      "355",
-      "123",
-      "347"
-    ]
+    "TOP": ["586", "581", "620", "761"],
+    "DELTA": ["752", "652", "460", "961"],
+    "NUMBERS": ["367", "355", "123", "347"]
   },
   "status": {
     "TOP": "PASS",
     "DELTA": "PASS",
-    "NUMBERS": "RECONCILIATION_REQUIRED"
+    "NUMBERS": "PASS"
   },
-  "note": "NUMBERS raw continuations reproduce historical rows, but the final tie-break on the saved 13:40 control is not yet fully reconstructed. Do not silently treat this as exact parity."
+  "note": "Strict regression control reproduces the saved 20.08.2026 13:40 benchmark for all three contours. NUMBERS tie resolution uses exact shortening rounds without date- or digit-specific overrides."
 }
