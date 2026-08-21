@@ -13,7 +13,7 @@ export function computeMainForecast(records,target,rules){
     blocks.TOP[p]={source:numSrc.chains[p],methods:transformed(m,0),selected:s};
     const md=methodsFor(delSrc.chains[p],pd), sd=selectVariants(md,delSrc.chains[p],pd).map(x=>x===null?null:mod10(x+last[p]));
     blocks.DELTA[p]={source:delSrc.chains[p],methods:transformed(md,last[p]),selected:sd};
-    const mn=methodsFor(delSrc.chains[p],pn), sn=selectVariants(mn,delSrc.chains[p],pn).map(x=>x===null?null:mod10(x+last[p]));
+    const mn=methodsFor(delSrc.chains[p],pn), sn=selectVariants(mn,delSrc.chains[p],pn,{mode:"numbers"}).map(x=>x===null?null:mod10(x+last[p]));
     blocks.NUMBERS[p]={source:delSrc.chains[p],methods:transformed(mn,last[p]),selected:sn};
   }
   const make=block=>[0,1,2,3].map(i=>POSITIONS.map(p=>block[p].selected[i]??"—").join(""));
