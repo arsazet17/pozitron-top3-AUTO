@@ -1,0 +1,80 @@
+{
+  "schedule": [
+    "02:40",
+    "04:40",
+    "06:40",
+    "07:40",
+    "09:40",
+    "11:40",
+    "13:40",
+    "16:25",
+    "21:25",
+    "22:40"
+  ],
+  "search": {
+    "sourceLength": 6,
+    "minLength": 3,
+    "shorten": "left",
+    "excludeTargetDate": true,
+    "searchAllPositions": true
+  },
+  "mirror": {
+    "code": "TOP3-ЗЕРКАЛО-15-СТРОГО-21.08.2026",
+    "life": 15,
+    "map": {
+      "0": 0,
+      "1": 9,
+      "2": 8,
+      "3": 7,
+      "4": 6,
+      "5": 5,
+      "6": 4,
+      "7": 3,
+      "8": 2,
+      "9": 1
+    },
+    "seedBases": [
+      {
+        "combo": "202",
+        "activationFact": "202",
+        "workStartsAfter": true
+      }
+    ]
+  },
+  "scannerRules": {
+    "04:40": {
+      "A": "twoDaysBackSameTime",
+      "B": "prevDaySameTime",
+      "C": "twoDaysBackSameTime"
+    },
+    "06:40": {
+      "A": "twoDaysBackSameTime",
+      "B": "prevDayNextTime",
+      "C": "prevDaySameTime"
+    },
+    "07:40": {
+      "A": "prevDaySameTime",
+      "B": "twoDaysBackSameTime",
+      "C": "twoDaysBackSameTime"
+    },
+    "11:40": {
+      "A": "prevDaySameTime",
+      "B": "prevDayPrevTime",
+      "C": "prevDaySameTime"
+    },
+    "13:40": {
+      "A": "prevDaySameTime",
+      "B": "prevDaySameTime",
+      "C": "twoDaysBackSameTime"
+    },
+    "16:25": {
+      "A": "twoDaysBackSameTime",
+      "B": "prevDaySameTime",
+      "C": "prevDaySameTime"
+    }
+  },
+  "algorithmShift": {
+    "enabled": false,
+    "note": "Каркас подключён. Точный закон выбора A/B/C из матрицы смены алгоритма не был формализован численно; приложение не выдумывает цифры и возвращает «нет сигнала» до заполнения rules.algorithmShift."
+  }
+}
