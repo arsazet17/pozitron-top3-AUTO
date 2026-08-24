@@ -1,5 +1,5 @@
-const CACHE="top3-auto-v110";
-const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./assets/icon.png","./manifest.webmanifest"];
+const CACHE="top3-auto-v111-storage-fix";
+const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./assets/icon.png","./manifest.webmanifest"];
 
 self.addEventListener("install",e=>{
   self.skipWaiting();
