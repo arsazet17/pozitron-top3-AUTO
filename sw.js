@@ -1,37 +1,6 @@
-const CACHE="top3-auto-v111-storage-fix";
-const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./assets/icon.png","./manifest.webmanifest"];
-
-self.addEventListener("install",e=>{
-  self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}));
-});
-self.addEventListener("activate",e=>{
-  e.waitUntil((async()=>{
-    const keys=await caches.keys();
-    await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));
-    await self.clients.claim();
-  })());
-});
-async function networkFirst(req){
-  try{
-    const r=await fetch(req,{cache:"no-store"});
-    if(r&&r.ok){const c=await caches.open(CACHE);c.put(req,r.clone()).catch(()=>{})}
-    return r;
-  }catch{
-    return (await caches.match(req))||Response.error();
-  }
-}
-self.addEventListener("fetch",e=>{
-  if(e.request.method!=="GET")return;
-  const u=new URL(e.request.url);
-  if(u.origin!==location.origin)return;
-
-  if(u.pathname.includes("/data/")||e.request.mode==="navigate"||/\.(?:js|css|html)$/.test(u.pathname)){
-    e.respondWith(networkFirst(e.request));
-    return;
-  }
-  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(async x=>{
-    if(x&&x.ok){const c=await caches.open(CACHE);c.put(e.request,x.clone()).catch(()=>{})}
-    return x;
-  })));
-});
+const CACHE="top3-auto-v121-chat-master-mirror-separate";
+const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
+self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}))});
+self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})())});
+async function networkFirst(req){try{const r=await fetch(req,{cache:"no-store"});if(r&&r.ok){const c=await caches.open(CACHE);c.put(req,r.clone()).catch(()=>{})}return r}catch{return (await caches.match(req))||Response.error()}}
+self.addEventListener("fetch",e=>{if(e.request.method!=="GET")return;const u=new URL(e.request.url);if(u.origin!==location.origin)return;if(u.pathname.includes("/data/")||e.request.mode==="navigate"||/\.(?:js|css|html)$/.test(u.pathname)){e.respondWith(networkFirst(e.request));return}e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(async x=>{if(x&&x.ok){const c=await caches.open(CACHE);c.put(e.request,x.clone()).catch(()=>{})}return x})))});
