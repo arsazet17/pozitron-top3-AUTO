@@ -11,12 +11,85 @@
     "21:25",
     "22:40"
   ],
+  "chatMaster": {
+    "schema": "chat-master-v1",
+    "familyOrderIgnored": true,
+    "main": {
+      "sources": [
+        "LAST_DELTA_SEQ",
+        "TIME_DIRECTION"
+      ],
+      "familyRank": [
+        "totalRawFrequency",
+        "familyRecency"
+      ],
+      "orderRank": [
+        "orderFrequency",
+        "orderRecency"
+      ],
+      "exactIsDiagnosticOnly": true
+    },
+    "algorithm": {
+      "name": "PERM_TO_FAMILY_REPEAT",
+      "minRepeat": 2,
+      "rank": [
+        "repeat",
+        "recency"
+      ],
+      "uniqueFamily": true
+    },
+    "master": {
+      "independentGroups": [
+        "MAIN",
+        "ALGORITHM",
+        "APP_CORE",
+        "SHIFT"
+      ],
+      "rankPoints": [
+        3,
+        2,
+        1
+      ],
+      "noDoubleCount": true,
+      "tieBreak": [
+        "score",
+        "groupCount",
+        "evidence",
+        "recency",
+        "fixedGroupOrder"
+      ],
+      "outputCount": 3,
+      "excludedIndependentSystems": [
+        "MIRROR"
+      ]
+    },
+    "audit": {
+      "trackRawFamily": true,
+      "trackDigitSupport": true,
+      "trackAssemblyBlind": true,
+      "trackPermFamilyRelations": true,
+      "trackAppRouteState": true,
+      "noBackfit": true,
+      "mirrorSeparate": true
+    }
+  },
   "search": {
     "sourceLength": 6,
     "minLength": 3,
     "shorten": "left",
     "excludeTargetDate": true,
-    "searchAllPositions": true
+    "searchAllPositions": true,
+    "note": "Служебный скрытый APP CORE. Не является отдельным пользовательским методом."
+  },
+  "algorithmShift": {
+    "enabled": true,
+    "mode": "auto",
+    "recentWindow": 30,
+    "rolling": 120,
+    "minObservations": 12,
+    "sameTimeBoost": 2.5,
+    "minChangedPositions": 1,
+    "note": "Скрытый независимый источник MASTER; старый отдельный экранный прогноз отменён."
   },
   "mirror": {
     "code": "TOP3-ЗЕРКАЛО-15-СТРОГО-21.08.2026",
@@ -39,48 +112,8 @@
         "activationFact": "202",
         "workStartsAfter": true
       }
-    ]
-  },
-  "scannerRules": {
-    "04:40": {
-      "A": "twoDaysBackSameTime",
-      "B": "prevDaySameTime",
-      "C": "twoDaysBackSameTime"
-    },
-    "06:40": {
-      "A": "twoDaysBackSameTime",
-      "B": "prevDayNextTime",
-      "C": "prevDaySameTime"
-    },
-    "07:40": {
-      "A": "prevDaySameTime",
-      "B": "twoDaysBackSameTime",
-      "C": "twoDaysBackSameTime"
-    },
-    "11:40": {
-      "A": "prevDaySameTime",
-      "B": "prevDayPrevTime",
-      "C": "prevDaySameTime"
-    },
-    "13:40": {
-      "A": "prevDaySameTime",
-      "B": "prevDaySameTime",
-      "C": "twoDaysBackSameTime"
-    },
-    "16:25": {
-      "A": "twoDaysBackSameTime",
-      "B": "prevDaySameTime",
-      "C": "prevDaySameTime"
-    }
-  },
-  "algorithmShift": {
-    "enabled": true,
-    "mode": "auto",
-    "recentWindow": 30,
-    "rolling": 120,
-    "minObservations": 12,
-    "sameTimeBoost": 2.5,
-    "minChangedPositions": 1,
-    "note": "Доп-прогноз формируется только при подтверждённой смене лидирующих маршрутов матрицы A/B/C. Основные TOP / Δ / ЧИСЛА не изменяются."
+    ],
+    "independentFromMaster": true,
+    "note": "Отдельный контур строгих тройников. Не входит в MASTER и не влияет на основной прогноз."
   }
 }
