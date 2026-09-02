@@ -1,4 +1,4 @@
-const CACHE="top3-auto-v121-chat-master-mirror-separate";
+const CACHE="top3-auto-v122-chat-master-mirror-separate";
 const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}))});
 self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})())});
