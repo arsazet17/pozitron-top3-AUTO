@@ -15,7 +15,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 3
 
     steps:
       - uses: actions/checkout@v4
@@ -23,45 +23,31 @@ jobs:
           fetch-depth: 0
           ref: main
 
-      - name: Fresh main
-        run: |
-          git fetch origin main
-          git reset --hard origin/main
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install browser reader
-        run: |
-          npm install --no-save playwright@1.54.0
-          npx playwright install --with-deps chromium
-
-      - name: Read, catch up, settle and forecast TOP-3
+      - name: TOP-3 lightweight sync
         run: |
           set -u
           success=0
-
           for attempt in 1 2 3; do
-            echo "TOP-3 Stoloto browser attempt $attempt/3"
-
+            echo "TOP-3 API attempt $attempt/3"
             if node scripts/update.mjs; then
               success=1
               break
             fi
-
             if [ "$attempt" -lt 3 ]; then
-              echo "Retry in 25 sec..."
-              sleep 25
+              sleep 15
             fi
           done
 
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 could not synchronize after 3 browser attempts."
+            echo "::error::TOP-3 lightweight API sync failed."
             exit 1
           fi
 
-      - name: Commit changed data immediately
+      - name: Commit changed data
         run: |
           if [ -z "$(git status --porcelain -- data)" ]; then
             echo "No changes"
