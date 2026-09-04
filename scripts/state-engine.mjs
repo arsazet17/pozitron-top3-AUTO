@@ -63,6 +63,56 @@ export function ensurePendingForecast(records,state,index,rules){
   return {issue:fresh,created:true};
 }
 
+// Технический перерыв Stoloto:
+// если следующий официальный номер тиража состоялся позже ожидаемого временного слота,
+// переносим на него УЖЕ ЗАМОРОЖЕННЫЙ прогноз без малейшего пересчёта.
+// Это сохраняет anti-leakage: меняется только подпись фактического времени, не содержание frozen.
+export function retargetPendingForecastToOfficial(state,index,actualTarget){
+  state.recentForecasts=state.recentForecasts||[];
+  const actualKey=keyOf(actualTarget);
+
+  const exact=[...state.recentForecasts].reverse().find(
+    x=>!x?.factAfter&&(x.key===actualKey||`${x.target?.date}|${x.target?.time}`===actualKey)
+  );
+  if(exact)return {retargeted:false,issue:exact};
+
+  const issue=[...state.recentForecasts].reverse().find(
+    x=>x?.schema===CHAT_MASTER_SCHEMA&&!x?.factAfter
+  );
+  if(!issue)return {retargeted:false,issue:null};
+
+  const oldTarget={date:issue.target?.date,time:issue.target?.time};
+  const oldKey=issue.key||keyOf(oldTarget);
+  const oldFile=detailPath(oldTarget);
+
+  // Удаляем старую индексную карточку до смены key.
+  for(let i=index.length-1;i>=0;i--){
+    if(index[i]?.key===oldKey||`${index[i]?.target?.date}|${index[i]?.target?.time}`===oldKey){
+      index.splice(i,1);
+    }
+  }
+
+  issue.retargetedFrom=Array.isArray(issue.retargetedFrom)?issue.retargetedFrom:[];
+  issue.retargetedFrom.push({...oldTarget,at:new Date().toISOString(),reason:"official_technical_break"});
+  issue.target={...issue.target,date:actualTarget.date,time:actualTarget.time};
+  issue.key=actualKey;
+
+  replaceRecent(state,issue);
+  replaceIndex(index,issue);
+
+  if(oldFile!==detailPath(issue.target)&&fs.existsSync(oldFile)){
+    fs.rmSync(oldFile,{force:true});
+  }
+  writeIssueDetail(issue);
+
+  log(
+    state,
+    `TECH BREAK: frozen перенесён без пересчёта ${oldTarget.date} ${oldTarget.time} -> ${actualTarget.date} ${actualTarget.time}`
+  );
+
+  return {retargeted:true,issue,from:oldTarget,to:{date:actualTarget.date,time:actualTarget.time}};
+}
+
 function sourceCombos(issue){
   const out=[];
   (issue.master?.top3||[]).forEach((x,i)=>out.push({block:"MASTER",variant:`TOP${i+1}`,combo:x.order,family:x.family}));
@@ -84,7 +134,6 @@ export function settleForecastForFact(factRec,state,index){
   issue.factAfter=factRec.combo;issue.factAt=`${factRec.date} ${factRec.time}`;issue.audit=auditChatForecast(issue,factRec);
   replaceRecent(state,issue);
 
-  // Служебная матрица APP продолжает учиться только как скрытый источник MASTER.
   const criteria=legacyRouteHits(issue,factRec);
   state.observations=state.observations||[];
   if(!state.observations.some(x=>x.date===factRec.date&&x.time===factRec.time)){
@@ -96,7 +145,6 @@ export function settleForecastForFact(factRec,state,index){
   state.masterAudit.push({date:factRec.date,time:factRec.time,...issue.audit,issuedAt:issue.issuedAt});
   state.masterAudit=state.masterAudit.slice(-2000);
 
-  // ЗЕРКАЛО — отдельный контур тройников. Никак не влияет на MASTER.
   const mirrorPred=Array.isArray(issue.mirror)?issue.mirror:[];
   const mirrorHits=mirrorPred.filter(x=>x?.triple===factRec.combo);
   state.mirrorAudit=state.mirrorAudit||[];

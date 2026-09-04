@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import {
   readJSON, writeJSON, createEmptyState,
-  ensurePendingForecast, settleForecastForFact, saveStateBundle
+  ensurePendingForecast, settleForecastForFact, saveStateBundle,
+  retargetPendingForecastToOfficial
 } from "./state-engine.mjs";
 
 const TAIL_FILE = "/tmp/top3_official_tail.json";
@@ -18,33 +19,42 @@ if (!fs.existsSync(TAIL_FILE)) throw new Error("Нет /tmp/top3_official_tail.j
 const schedule = rules.schedule;
 const tail = JSON.parse(fs.readFileSync(TAIL_FILE, "utf8"));
 
-function nextSlot(last) {
-  const i = schedule.indexOf(last.time);
-  if (i < 0) throw new Error(`Последнее время ${last.time} отсутствует в schedule`);
-  const ni = (i + 1) % schedule.length;
-  let date = last.date;
-  if (ni === 0) {
-    const d = new Date(`${date}T12:00:00+03:00`);
-    d.setUTCDate(d.getUTCDate() + 1);
-    date = d.toISOString().slice(0, 10);
-  }
-  return {date, time: schedule[ni]};
-}
-
 function validTailRow(x) {
-  return x && Number.isInteger(Number(x.draw)) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || "")) && schedule.includes(String(x.time || "")) && /^\d{3}$/.test(String(x.combo || ""));
+  return x &&
+    Number.isInteger(Number(x.draw)) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || "")) &&
+    schedule.includes(String(x.time || "")) &&
+    /^\d{3}$/.test(String(x.combo || ""));
 }
 
-if (!Array.isArray(tail) || tail.length < 3 || !tail.every(validTailRow)) throw new Error("Авторизованный хвост TOP-3 имеет неверный формат");
+function stamp(x) {
+  const ms = Date.parse(`${x.date}T${x.time}:00+03:00`);
+  if (!Number.isFinite(ms)) throw new Error(`Некорректные дата/время: ${x.date} ${x.time}`);
+  return ms;
+}
+
+if (!Array.isArray(tail) || tail.length < 3 || !tail.every(validTailRow)) {
+  throw new Error("Авторизованный хвост TOP-3 имеет неверный формат");
+}
 tail.sort((a,b) => Number(a.draw) - Number(b.draw));
 
-const known = [...archive].reverse().find(x => x?.draw != null && String(x.draw).trim() !== "");
+const known = [...archive].reverse()
+  .find(x => x?.draw != null && String(x.draw).trim() !== "");
+
 if (!known) throw new Error("В архиве нет опорного номера тиража");
 
 const knownNo = Number(known.draw);
 const newestNo = Number(tail.at(-1).draw);
-console.log(`LOCAL №${knownNo} ${known.date} ${known.time}=${known.combo}; STOLOTO №${newestNo} ${tail.at(-1).date} ${tail.at(-1).time}=${tail.at(-1).combo}`);
 
+console.log(
+  `LOCAL №${knownNo} ${known.date} ${known.time}=${known.combo}; ` +
+  `STOLOTO №${newestNo} ${tail.at(-1).date} ${tail.at(-1).time}=${tail.at(-1).combo}`
+);
+
+// Frozen создаётся по обычной сетке ДО появления следующего факта.
+// Если Столото затем официально пропустил один/несколько временных слотов,
+// этот же frozen будет перенесён на следующий реально состоявшийся тираж
+// БЕЗ пересчёта комбинаций.
 ensurePendingForecast(archive, state, forecastIndex, rules);
 saveStateBundle(state, forecastIndex);
 
@@ -55,22 +65,37 @@ if (newestNo <= knownNo) {
 
 const byNo = new Map(tail.map(x => [Number(x.draw), x]));
 const missing = [];
+
 for (let n = knownNo + 1; n <= newestNo; n++) {
   const row = byNo.get(n);
-  if (!row) throw new Error(`Авторизованный хвост не содержит обязательный №${n}. Ничего не записано; нужен более длинный хвост.`);
+  if (!row) {
+    throw new Error(
+      `Авторизованный хвост не содержит обязательный №${n}. ` +
+      `Ничего не записано; нужен более длинный хвост.`
+    );
+  }
   missing.push(row);
 }
 
-let probe = archive.at(-1);
+// Предварительная проверка всей официальной цепочки:
+// 1) номера идут строго подряд;
+// 2) дата/время двигаются только вперёд;
+// 3) время принадлежит известному набору времени TOP-3.
+// НИКАКОЙ проверки "обязательного следующего слота" здесь больше нет:
+// технический перерыв не является пропущенным тиражом.
+let prev = known;
 for (const row of missing) {
-  const expected = nextSlot(probe);
-  if (row.date !== expected.date || row.time !== expected.time) {
-    throw new Error(`№${row.draw}: Stoloto дал ${row.date} ${row.time}, а по расписанию ожидается ${expected.date} ${expected.time}. Ничего не записано.`);
+  if (stamp(row) <= stamp(prev)) {
+    throw new Error(
+      `№${row.draw}: официальная дата/время ${row.date} ${row.time} ` +
+      `не идут вперёд после №${prev.draw} ${prev.date} ${prev.time}. Ничего не записано.`
+    );
   }
-  probe = {date: row.date, time: row.time};
+  prev = row;
 }
 
 let lastAdded = null;
+
 for (const row of missing) {
   const rec = {
     date: row.date,
@@ -81,14 +106,38 @@ for (const row of missing) {
     combo: row.combo,
     draw: String(row.draw)
   };
+
+  // Если между фактами был технический перерыв, переносим УЖЕ СУЩЕСТВУЮЩИЙ
+  // frozen на фактическое официальное время. Комбинации не пересчитываются.
+  const moved = retargetPendingForecastToOfficial(state, forecastIndex, rec);
+  if (moved?.retargeted) {
+    console.log(
+      `TECH BREAK: frozen ${moved.from.date} ${moved.from.time} -> ` +
+      `${moved.to.date} ${moved.to.time}; combos preserved`
+    );
+  }
+
+  // 1) проверяем frozen на фактически состоявшемся тираже
   settleForecastForFact(rec, state, forecastIndex);
+
+  // 2) добавляем официальный факт
   archive.push(rec);
+
+  // 3) создаём frozen следующего обычного слота
   ensurePendingForecast(archive, state, forecastIndex, rules);
+
   lastAdded = rec;
   console.log(`ADDED №${rec.draw} ${rec.date} ${rec.time}=${rec.combo}`);
 }
 
 writeJSON("data/archive.json", archive);
-writeJSON("data/latest.json", {updatedAt: new Date().toISOString(), draw: lastAdded});
+writeJSON("data/latest.json", {
+  updatedAt: new Date().toISOString(),
+  draw: lastAdded
+});
 saveStateBundle(state, forecastIndex);
-console.log(`TOP-3 CAUGHT UP: +${missing.length}; latest №${lastAdded.draw} ${lastAdded.date} ${lastAdded.time}=${lastAdded.combo}`);
+
+console.log(
+  `TOP-3 CAUGHT UP: +${missing.length}; ` +
+  `latest №${lastAdded.draw} ${lastAdded.date} ${lastAdded.time}=${lastAdded.combo}`
+);
