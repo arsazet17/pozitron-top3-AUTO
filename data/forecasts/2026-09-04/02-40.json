@@ -1,8 +1,8 @@
 {
   "schema": "chat-master-v1",
   "target": {
-    "date": "2026-09-03",
-    "time": "22:40"
+    "date": "2026-09-04",
+    "time": "02:40"
   },
   "lastFact": "885",
   "master": {
@@ -5293,16 +5293,79 @@
     "master": "independent groups MAIN/ALGORITHM/APP_CORE/SHIFT; rank points 3/2/1; no double count",
     "noLeakage": true
   },
-  "key": "2026-09-03|22:40",
+  "key": "2026-09-04|02:40",
   "issuedAt": "2026-09-03T20:01:13.014Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "593",
+  "factAt": "2026-09-04 02:40",
+  "audit": {
+    "fact": "593",
+    "family": "359",
+    "master": {
+      "hit": false,
+      "exact": false,
+      "families": [
+        "234",
+        "456",
+        "048"
+      ]
+    },
+    "main": {
+      "hit": false,
+      "seq": 0,
+      "td": 0,
+      "classification": "STRUCTURAL BLIND"
+    },
+    "algorithm": {
+      "hit": false,
+      "relations": []
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "342"
+    },
+    "shift": {
+      "hit": false,
+      "exact": false,
+      "combo": "804"
+    },
+    "digitSupport": {
+      "3": {
+        "seq": 14,
+        "seqTotal": 59,
+        "td": 20,
+        "tdTotal": 91
+      },
+      "5": {
+        "seq": 10,
+        "seqTotal": 59,
+        "td": 23,
+        "tdTotal": 91
+      },
+      "9": {
+        "seq": 14,
+        "seqTotal": 59,
+        "td": 21,
+        "tdTotal": 91
+      }
+    },
+    "assemblyBlind": true,
+    "classification": "STRUCTURAL BLIND",
+    "workError": "MASTER MISS — сохранить freeze; проверить RAW/relations/groups; правила не менять по одному факту"
+  },
   "mirror": [
     {
       "base": "030",
       "permutation": "003",
       "triple": "888"
+    }
+  ],
+  "retargetedFrom": [
+    {
+      "date": "2026-09-03",
+      "time": "22:40",
+      "at": "2026-09-04T10:14:01.273Z",
+      "reason": "official_technical_break"
     }
   ]
 }
