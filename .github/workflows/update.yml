@@ -3,8 +3,6 @@ name: TOP-3 AUTO · Stoloto
 on:
   workflow_dispatch:
   schedule:
-    # Как у рабочей схемы M5M: частая проверка, а запись только когда появился новый факт.
-    # GitHub cron работает в UTC, но каждые 5 минут часовой пояс здесь не важен.
     - cron: "*/5 * * * *"
 
 permissions:
@@ -34,27 +32,32 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install browser reader
+        run: |
+          npm install --no-save playwright@1.54.0
+          npx playwright install --with-deps chromium
+
       - name: Read, catch up, settle and forecast TOP-3
         run: |
           set -u
           success=0
 
-          for attempt in 1 2 3 4 5 6; do
-            echo "TOP-3 Stoloto attempt $attempt/6"
+          for attempt in 1 2 3; do
+            echo "TOP-3 Stoloto browser attempt $attempt/3"
 
             if node scripts/update.mjs; then
               success=1
               break
             fi
 
-            if [ "$attempt" -lt 6 ]; then
-              echo "Fresh draw/archive not ready yet; retry in 25 sec."
+            if [ "$attempt" -lt 3 ]; then
+              echo "Retry in 25 sec..."
               sleep 25
             fi
           done
 
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 could not synchronize after 6 attempts."
+            echo "::error::TOP-3 could not synchronize after 3 browser attempts."
             exit 1
           fi
 
