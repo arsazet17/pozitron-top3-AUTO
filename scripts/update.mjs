@@ -2,6 +2,7 @@ import fs from "node:fs";
 import {readJSON,writeJSON,createEmptyState,ensurePendingForecast,settleForecastForFact,saveStateBundle} from "./state-engine.mjs";
 
 const SOURCE="https://www.stoloto.ru/top3";
+const ARCHIVE_SOURCE="https://www.stoloto.ru/top3/archive";
 const schedule=["02:40","04:40","06:40","07:40","09:40","11:40","13:40","16:25","21:25","22:40"];
 const monthMap={января:1,февраля:2,марта:3,апреля:4,мая:5,июня:6,июля:7,августа:8,сентября:9,октября:10,ноября:11,декабря:12};
 
@@ -43,12 +44,17 @@ function parse(html){
   if(!head)throw new Error("Не найден заголовок последнего тиража");
 
   const pos=t.indexOf(head[0]);
-  const tail=t.slice(pos+head[0].length,pos+head[0].length+1000);
+  const tail=t.slice(pos+head[0].length,pos+head[0].length+1400);
   let nums=tail.match(/(?:^|\s)0([0-9])\s+0([0-9])\s+0([0-9])(?:\s|$)/);
   if(!nums)nums=tail.match(/(?:Числа|Результат|Комбинация)\s*[:\-]?\s*0?([0-9])\s+0?([0-9])\s+0?([0-9])(?:\s|$)/i);
   if(!nums)throw new Error("Не удалось надёжно распознать три цифры результата");
 
   return {draw:String(head[1]),date:isoDate(+head[2],head[3],+head[4]),combo:`${nums[1]}${nums[2]}${nums[3]}`};
+}
+async function fetchParsed(url){
+  const res=await fetch(url,{headers:{"user-agent":"Mozilla/5.0 TOP3-AUTO/1.2"},redirect:"follow",cache:"no-store"});
+  if(!res.ok)throw new Error(`${url}: HTTP ${res.status}`);
+  return parse(await res.text());
 }
 
 const archive=readJSON("data/archive.json",[]);
@@ -58,56 +64,64 @@ const forecastIndex=readJSON("data/forecast-index.json",[]);
 if(!Array.isArray(archive)||!archive.length)throw new Error("Архив пуст или повреждён");
 if(!Array.isArray(forecastIndex))throw new Error("forecast-index.json повреждён");
 
-const last=archive.at(-1);
 const knownDraw=[...archive].reverse().find(x=>x.draw!=null&&String(x.draw).trim()!=="")?.draw;
 if(!knownDraw)throw new Error("В архиве нет опорного номера тиража — автоматическое продолжение остановлено");
 
-// ВАЖНО: прогноз на следующий тираж фиксируется ДО чтения нового результата.
+// Frozen на следующий тираж обязан существовать ДО чтения нового факта.
 ensurePendingForecast(archive,state,forecastIndex,rules);
 saveStateBundle(state,forecastIndex);
 
-const res=await fetch(SOURCE,{headers:{"user-agent":"Mozilla/5.0 TOP3-AUTO/1.1"},redirect:"follow"});
-if(!res.ok)throw new Error("Stoloto HTTP "+res.status);
-const p=parse(await res.text());
+const newest=await fetchParsed(SOURCE);
+const newestNo=Number(newest.draw), knownNo=Number(knownDraw);
+if(!Number.isFinite(newestNo)||!Number.isFinite(knownNo))throw new Error("Некорректный номер тиража");
 
-const pNo=Number(p.draw), knownNo=Number(knownDraw);
-if(!Number.isFinite(pNo)||!Number.isFinite(knownNo))throw new Error("Некорректный номер тиража");
-
-if(archive.some(x=>String(x.draw||"")===p.draw)){
-  console.log(`Тираж №${p.draw} уже есть. Текущий прогноз и серверный архив синхронизированы.`);
-  process.exit(0);
-}
-if(pNo<=knownNo){
-  console.log(`Столото вернул старый тираж №${p.draw}; последний сохранённый №${knownDraw}.`);
-  process.exit(0);
-}
-if(pNo!==knownNo+1){
-  throw new Error(`Обнаружен пропуск тиражей: сохранён №${knownDraw}, сайт показывает №${p.draw}. Автозапись остановлена.`);
-}
-
-const slot=nextSlot(last);
-if(p.date!==slot.date)throw new Error(`Дата нового тиража ${p.date} не совпадает с ожидаемой ${slot.date}`);
-if(!resultTimeHasArrived(slot.date,slot.time)){
-  console.log(`Тираж №${p.draw} распознан, но слот ${slot.date} ${slot.time} ещё не наступил — запись запрещена`);
+if(newestNo<=knownNo){
+  console.log(`Новых тиражей нет: сайт №${newest.draw}, последний сохранённый №${knownDraw}.`);
   process.exit(0);
 }
 
-const rec={
-  date:slot.date,time:slot.time,
-  A:+p.combo[0],B:+p.combo[1],C:+p.combo[2],
-  combo:p.combo,draw:p.draw
-};
+// Если GitHub/диспетчер пропустил несколько запусков, забираем всю цепочку,
+// а не останавливаемся на ошибке "пропуск тиражей".
+const missing=[];
+for(let n=knownNo+1;n<=newestNo;n++){
+  const p=n===newestNo?newest:await fetchParsed(`${ARCHIVE_SOURCE}/${n}`);
+  if(Number(p.draw)!==n)throw new Error(`Архивная страница №${n} вернула тираж №${p.draw}`);
+  missing.push(p);
+}
 
-// 1. Проверяем именно тот прогноз, который был сохранён ДО выхода факта.
-settleForecastForFact(rec,state,forecastIndex);
+// Сначала проверяем всю цепочку и только потом меняем файлы.
+let probeLast=archive.at(-1);
+for(const p of missing){
+  const slot=nextSlot(probeLast);
+  if(p.date!==slot.date)throw new Error(`Дата тиража №${p.draw} (${p.date}) не совпадает с ожидаемой ${slot.date}`);
+  if(!resultTimeHasArrived(slot.date,slot.time))throw new Error(`Слот ${slot.date} ${slot.time} для №${p.draw} ещё не наступил`);
+  probeLast={date:slot.date,time:slot.time};
+}
 
-// 2. Добавляем факт в постоянный архив.
-archive.push(rec);
+let lastRec=null;
+for(const p of missing){
+  const slot=nextSlot(archive.at(-1));
+  const rec={
+    date:slot.date,time:slot.time,
+    A:+p.combo[0],B:+p.combo[1],C:+p.combo[2],
+    combo:p.combo,draw:p.draw
+  };
+
+  // 1. Закрываем только прогноз, который был frozen до этого факта.
+  settleForecastForFact(rec,state,forecastIndex);
+
+  // 2. Добавляем факт.
+  archive.push(rec);
+
+  // 3. Немедленно создаём frozen на следующий слот, прежде чем применять
+  // следующий пропущенный факт. Так сохраняется anti-leakage.
+  ensurePendingForecast(archive,state,forecastIndex,rules);
+  lastRec=rec;
+  console.log("Добавлен и полностью обработан",rec);
+}
+
 writeJSON("data/archive.json",archive);
-writeJSON("data/latest.json",{updatedAt:new Date().toISOString(),draw:rec});
-
-// 3. После нового факта создаём полный прогноз на следующий тираж.
-ensurePendingForecast(archive,state,forecastIndex,rules);
+writeJSON("data/latest.json",{updatedAt:new Date().toISOString(),draw:lastRec});
 saveStateBundle(state,forecastIndex);
 
-console.log("Добавлен и полностью обработан",rec);
+console.log(`TOP-3 догнан: добавлено ${missing.length} тираж(а/ей), последний №${lastRec.draw} ${lastRec.date} ${lastRec.time} = ${lastRec.combo}`);
