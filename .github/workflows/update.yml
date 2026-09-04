@@ -15,7 +15,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 7
 
     steps:
       - uses: actions/checkout@v4
@@ -23,34 +23,69 @@ jobs:
           fetch-depth: 0
           ref: main
 
+      - name: Fresh main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: TOP-3 lightweight sync
+      - name: Cache Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-top3-playwright-1.54.0-chromium-v1
+
+      - name: Install Playwright package
+        run: |
+          python -m pip install --disable-pip-version-check --no-input "playwright==1.54.0"
+
+      - name: Install Chromium system dependencies
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            python -m playwright install-deps chromium
+          else
+            python -m playwright install --with-deps chromium
+          fi
+
+      - name: Read authorized TOP-3 tail from Stoloto
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
         run: |
           set -u
           success=0
           for attempt in 1 2 3; do
-            echo "TOP-3 API attempt $attempt/3"
-            if node scripts/update.mjs; then
+            echo "TOP-3 authorized reader attempt $attempt/3"
+            if python scripts/top3_stoloto_sync.py; then
               success=1
               break
             fi
             if [ "$attempt" -lt 3 ]; then
-              sleep 15
+              echo "Reader retry in 20 sec..."
+              sleep 20
             fi
           done
 
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 lightweight API sync failed."
+            echo "::error::TOP-3 authorized reader failed after 3 attempts."
             exit 1
           fi
 
-      - name: Commit changed data
+      - name: Settle missed draws and build next frozen
+        run: node scripts/update.mjs
+
+      - name: Commit changed TOP-3 data
         run: |
           if [ -z "$(git status --porcelain -- data)" ]; then
-            echo "No changes"
+            echo "No data changes"
             exit 0
           fi
 
@@ -58,7 +93,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -- data
-          git commit -m "TOP-3 AUTO · full forecast/state update"
+          git commit -m "TOP-3 AUTO · authorized Stoloto sync"
 
           git fetch origin main
           git rebase origin/main
