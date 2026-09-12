@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import asyncio, os, re
+import asyncio, json, os, re
 from playwright.async_api import async_playwright
 
 LOGIN_URL="https://oauth.stoloto.ru/login"
@@ -35,7 +35,30 @@ async def main():
                     print(f"NET {resp.status} {ct} {resp.url}")
                     if "json" in ct and resp.status==200:
                         text=await resp.text()
-                        print("JSON",text[:1200].replace("\n"," "))
+                        if "/service/games/info-new" in u:
+                            try:
+                                data=json.loads(text)
+                                games=data.get("games",[]) if isinstance(data,dict) else []
+                                matches=[]
+                                for g in games:
+                                    if not isinstance(g,dict): continue
+                                    name=str(g.get("name","")).lower()
+                                    nums=[]
+                                    for key in ("draw","completedDraw"):
+                                        x=g.get(key)
+                                        if isinstance(x,dict):
+                                            try: nums.append(int(x.get("number",0)))
+                                            except Exception: pass
+                                    if "top" in name or any(n>=267700 for n in nums): matches.append(g)
+                                print("INFO_NEW_MATCHES",json.dumps(matches,ensure_ascii=False)[:12000])
+                            except Exception as e: print("INFO_PARSE_ERR",e)
+                        elif "/service/draws/archive" in u:
+                            try:
+                                data=json.loads(text); rows=data.get("draws",[]) if isinstance(data,dict) else []
+                                print("ARCHIVE_API_HEAD",json.dumps(rows[:3],ensure_ascii=False)[:5000])
+                            except Exception as e: print("ARCHIVE_PARSE_ERR",e)
+                        elif "/_next/data/" in u and "/top3/archive.json" in u:
+                            print("NEXT_ARCHIVE_JSON",text[:8000].replace("\n"," "))
                 except Exception as e: print("NETERR",resp.url,e)
         page.on("response",lambda r: tasks.append(asyncio.create_task(inspect(r))))
         await login(page,email,password)
@@ -44,9 +67,9 @@ async def main():
         await page.wait_for_timeout(10000)
         body=await page.locator("body").inner_text(timeout=10000)
         print("PAGE_URL",page.url)
-        print("BODY_HEAD",body[:2500].replace("\n"," | "))
+        print("BODY_HEAD",body[:3000].replace("\n"," | "))
         nums=sorted(set(re.findall(r"267\d{3}",body)))
-        print("DRAW_NUMBERS_IN_BODY",nums[-30:])
+        print("DRAW_NUMBERS_IN_BODY",nums[-40:])
         resources=await page.evaluate("performance.getEntriesByType('resource').map(x=>x.name)")
         print("RESOURCE_MATCHES")
         for u in resources:
