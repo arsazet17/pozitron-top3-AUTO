@@ -24,21 +24,24 @@ jobs:
           python-version: "3.12"
 
       - name: Build full archive
-        run: python scripts/build_full_archive.py
+        run: node scripts/build-full-archive.mjs
 
       - name: Verify full archive boundaries
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path('data/full-archive/all.json')
-          d=json.loads(p.read_text(encoding='utf-8'))
+          d=json.loads(Path('data/full-archive/all.json').read_text(encoding='utf-8'))
           assert d['fromDraw']==11, d
           assert d['toDraw']==267946, d
           assert d['total']==267936, d
+          assert d['undatedCount']==247976, d
+          assert d['datedFromDraw']==247987, d
           assert len(d['data'])==d['total']*3
+          assert d['data'][:3]=='699', d['data'][:3]
+          assert d['data'][(-d['datedCount']*3):][:3], 'dated block empty'
           assert d['data'][-3:]=='572', d['data'][-3:]
-          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], d['data'][-3:])
+          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], d['data'][:3], d['data'][-3:])
           PY
 
       - name: Verify 48-draw schedule
