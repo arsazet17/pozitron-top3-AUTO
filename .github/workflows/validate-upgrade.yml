@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -26,22 +26,30 @@ jobs:
       - name: Build full archive
         run: node scripts/build-full-archive.mjs
 
-      - name: Verify full archive boundaries
+      - name: Verify full archive and repaired dated facts
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           d=json.loads(Path('data/full-archive/all.json').read_text(encoding='utf-8'))
+          a=json.loads(Path('data/archive.json').read_text(encoding='utf-8'))
+          latest=json.loads(Path('data/latest.json').read_text(encoding='utf-8'))['draw']
           assert d['fromDraw']==11, d
-          assert d['toDraw']==267946, d
-          assert d['total']==267936, d
+          assert d['toDraw']>=267946, d
+          assert d['total']==d['toDraw']-10, d
           assert d['undatedCount']==247976, d
           assert d['datedFromDraw']==247987, d
+          assert d['datedCount']==d['toDraw']-247986, d
           assert len(d['data'])==d['total']*3
           assert d['data'][:3]=='699', d['data'][:3]
-          assert d['data'][(-d['datedCount']*3):][:3], 'dated block empty'
-          assert d['data'][-3:]=='572', d['data'][-3:]
-          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], d['data'][:3], d['data'][-3:])
+          p=(247986-11)*3
+          assert d['data'][p:p+3]=='655', d['data'][p:p+3]
+          assert len(a)==d['datedCount'], (len(a),d['datedCount'])
+          assert int(a[0]['draw'])==247987, a[0]
+          assert int(a[-1]['draw'])==d['toDraw'], a[-1]
+          assert int(latest['draw'])==d['toDraw'], latest
+          assert a[-1]['combo']==d['data'][-3:]==latest['combo']
+          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], 'last', d['data'][-3:])
           PY
 
       - name: Verify 48-draw schedule
@@ -55,6 +63,13 @@ jobs:
           assert all(t.endswith(':25') or t.endswith(':55') for t in s)
           print('SCHEDULE OK', len(s), s[0], s[-1])
           PY
+
+      - name: Syntax-check browser modules
+        run: |
+          node --check js/app.js
+          node --check js/pages/archive.js
+          node --check js/pages/triples.js
+          node --check js/engine/mirror15.js
 
       - name: Run strict engine tests
         run: node tests.mjs
