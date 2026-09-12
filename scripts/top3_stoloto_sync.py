@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
+import asyncio
 import json
+import os
+import re
 import sys
 import time
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from playwright.async_api import async_playwright
+
+LOGIN_URL = "https://oauth.stoloto.ru/login"
+ARCHIVE_PAGE = "https://m.stoloto.ru/top3/archive/"
 ARCHIVE_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/draws/archive"
 INFO_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/games/info-new"
 OUT = Path("/tmp/top3_official_tail.json")
@@ -18,29 +23,7 @@ MAX_PAGES = 20
 TAIL_SIZE = 60
 SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 55)]
 SCHEDULE_SET = set(SCHEDULE)
-HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/152 Safari/537.36",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-}
 MOSCOW = ZoneInfo("Europe/Moscow")
-
-
-def get_json(url, attempts=3):
-    last = None
-    for attempt in range(1, attempts + 1):
-        try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=35) as r:
-                if r.status != 200:
-                    raise RuntimeError(f"HTTP {r.status}: {url}")
-                return json.loads(r.read().decode("utf-8"))
-        except Exception as exc:
-            last = exc
-            if attempt < attempts:
-                time.sleep(1.5 * attempt)
-    raise RuntimeError(f"Official API read failed: {last}")
 
 
 def valid_row(row):
@@ -49,22 +32,16 @@ def valid_row(row):
         and isinstance(row.get("draw"), int)
         and row["draw"] >= 100000
         and isinstance(row.get("date"), str)
-        and len(row["date"]) == 10
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"])
         and row.get("time") in SCHEDULE_SET
         and isinstance(row.get("combo"), str)
-        and len(row["combo"]) == 3
-        and row["combo"].isdigit()
+        and re.fullmatch(r"\d{3}", row["combo"])
     )
 
 
 def parse_iso_date(value):
-    s = str(value or "")
-    if len(s) < 16 or s[4] != "-" or s[7] != "-" or s[10] != "T":
-        return None
-    try:
-        return {"date": s[:10], "time": s[11:16]}
-    except Exception:
-        return None
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})", str(value or ""))
+    return {"date": f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "time": f"{m.group(4)}:{m.group(5)}"} if m else None
 
 
 def parse_epoch_moscow(value):
@@ -72,18 +49,20 @@ def parse_epoch_moscow(value):
         seconds = float(value)
     except Exception:
         return None
-    if seconds > 10_000_000_000:  # tolerate milliseconds if API ever switches units
+    if seconds > 10_000_000_000:
         seconds /= 1000.0
     dt = datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone(MOSCOW)
     return {"date": dt.strftime("%Y-%m-%d"), "time": dt.strftime("%H:%M")}
 
 
 def combo_from(raw):
-    c = raw.get("combination") if isinstance(raw, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    c = raw.get("combination")
     nums = None
     if isinstance(c, dict):
         nums = c.get("structured") or c.get("serialized")
-    if nums is None and isinstance(raw, dict):
+    if nums is None:
         nums = raw.get("winningCombination")
     if not isinstance(nums, list) or len(nums) < 3:
         return None
@@ -99,8 +78,7 @@ def combo_from(raw):
 def archive_to_row(raw):
     if not isinstance(raw, dict):
         return None
-    dt = parse_iso_date(raw.get("date"))
-    combo = combo_from(raw)
+    dt, combo = parse_iso_date(raw.get("date")), combo_from(raw)
     try:
         draw = int(raw.get("number"))
     except Exception:
@@ -112,8 +90,7 @@ def archive_to_row(raw):
 def completed_to_row(raw):
     if not isinstance(raw, dict):
         return None
-    dt = parse_epoch_moscow(raw.get("date"))
-    combo = combo_from(raw)
+    dt, combo = parse_epoch_moscow(raw.get("date")), combo_from(raw)
     try:
         draw = int(raw.get("number"))
     except Exception:
@@ -147,23 +124,83 @@ def local_latest():
         return 0
 
 
-def fetch_info_latest():
-    j = get_json(INFO_API)
+async def login(page, email, password):
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+    login_loc = None
+    pass_loc = None
+    for sel in (
+        'input[type="email"]', 'input[name*="email" i]', 'input[name*="login" i]',
+        'input[autocomplete="username"]', 'input[type="text"]',
+    ):
+        loc = page.locator(sel).first
+        if await loc.count():
+            login_loc = loc
+            break
+    for sel in ('input[type="password"]', 'input[name*="password" i]', 'input[autocomplete="current-password"]'):
+        loc = page.locator(sel).first
+        if await loc.count():
+            pass_loc = loc
+            break
+    if login_loc is None or pass_loc is None:
+        raise RuntimeError(f"OAuth fields not found; url={page.url}")
+    await login_loc.fill(email)
+    await pass_loc.fill(password)
+    btn = page.get_by_role("button", name=re.compile("войти", re.I)).first
+    if not await btn.count():
+        btn = page.locator('button[type="submit"]').first
+    if not await btn.count():
+        raise RuntimeError("OAuth submit button not found")
+    await btn.click()
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=20000)
+    except Exception:
+        pass
+    await page.wait_for_timeout(2200)
+    if "oauth.stoloto.ru/login" in page.url and await page.locator('input[type="password"]').count():
+        raise RuntimeError("Stoloto OAuth login did not complete")
+
+
+async def browser_json(page, url):
+    result = await page.evaluate(
+        """async (url) => {
+          try {
+            const r = await fetch(url, {
+              method: 'GET', credentials: 'include', cache: 'no-store',
+              headers: { 'Accept':'application/json, text/plain, */*', 'X-Requested-With':'XMLHttpRequest' }
+            });
+            const text = await r.text();
+            return {ok:r.ok,status:r.status,url:r.url,text};
+          } catch (e) {
+            return {ok:false,status:0,url:String(url),text:'',error:String(e)};
+          }
+        }""",
+        url,
+    )
+    if not result.get("ok"):
+        raise RuntimeError(f"Browser API HTTP {result.get('status')}: {result.get('url')} {result.get('error','')}")
+    try:
+        return json.loads(result.get("text") or "")
+    except Exception as exc:
+        raise RuntimeError(f"Browser API returned non-JSON for {url}: {exc}")
+
+
+async def fetch_info_latest(page):
+    j = await browser_json(page, f"{INFO_API}?_={int(time.time()*1000)}")
     games = j.get("games") if isinstance(j, dict) else None
     if not isinstance(games, list):
         raise RuntimeError("games/info-new: field games is missing")
     game = next((x for x in games if isinstance(x, dict) and x.get("name") == "top-3"), None)
     row = completed_to_row(game.get("completedDraw") if game else None)
     if not row:
-        raise RuntimeError("games/info-new did not return a valid completedDraw for TOP-3")
+        raise RuntimeError("games/info-new did not return a valid TOP-3 completedDraw")
     return row
 
 
-def fetch_archive_since(local_no):
+async def fetch_archive_since(page, local_no):
     rows = []
-    for page in range(1, MAX_PAGES + 1):
-        q = urllib.parse.urlencode({"game": "top3", "count": PAGE_SIZE, "page": page, "_": int(time.time() * 1000)})
-        j = get_json(f"{ARCHIVE_API}?{q}")
+    for pageno in range(1, MAX_PAGES + 1):
+        url = f"{ARCHIVE_API}?game=top3&count={PAGE_SIZE}&page={pageno}&_={int(time.time()*1000)}"
+        j = await browser_json(page, url)
         raw = j.get("draws") if isinstance(j, dict) else None
         page_rows = [archive_to_row(x) for x in (raw or [])]
         page_rows = [x for x in page_rows if x]
@@ -176,70 +213,70 @@ def fetch_archive_since(local_no):
     return dedupe(rows)
 
 
-def verify_sources(info_latest, archive_rows, local_no):
+async def verify_sources(page, info_latest, archive_rows, local_no):
     if not archive_rows:
         raise RuntimeError("Official archive API returned no TOP-3 rows")
     archive_latest = archive_rows[-1]
-
     if same_draw(info_latest, archive_latest):
-        return archive_rows, "archive+info-new"
-
+        return archive_rows, "browser-archive+info-new"
     if archive_latest["draw"] > info_latest["draw"]:
         common = next((x for x in archive_rows if x["draw"] == info_latest["draw"]), None)
         if not same_draw(common, info_latest):
             raise RuntimeError(f"Official sources disagree: info-new={info_latest}; archive-common={common}")
-        time.sleep(2.5)
-        confirm = fetch_archive_since(local_no)
+        await page.wait_for_timeout(2500)
+        confirm = await fetch_archive_since(page, local_no)
         if not confirm or not same_draw(archive_latest, confirm[-1]):
-            raise RuntimeError(f"Newest archive draw did not confirm on second read: first={archive_latest}; second={confirm[-1] if confirm else None}")
+            raise RuntimeError(f"Newest archive draw did not confirm twice: first={archive_latest}; second={confirm[-1] if confirm else None}")
         print(f"INFO-NEW LAG: №{info_latest['draw']}; archive twice confirmed №{archive_latest['draw']}")
-        return confirm, "archive-twice+info-common"
-
+        return confirm, "browser-archive-twice+info-common"
     raise RuntimeError(f"Official archive has not caught up with info-new: info-new={info_latest}; archive={archive_latest}")
 
 
-def ensure_contiguous(rows, local_no, newest_no):
-    if newest_no <= local_no:
-        return
-    by_no = {x["draw"]: x for x in rows}
-    missing = [n for n in range(local_no + 1, newest_no + 1) if n not in by_no]
-    if missing:
-        raise RuntimeError(f"Official API tail has a gap; missing draw(s): {missing[:8]}")
-
-
-def main():
+async def main():
+    email = os.getenv("STOLOTO_EMAIL", "").strip()
+    password = os.getenv("STOLOTO_PASSWORD", "").strip()
+    if not email or not password:
+        raise RuntimeError("Set STOLOTO_EMAIL and STOLOTO_PASSWORD secrets")
     local_no = local_latest()
-    info_latest = fetch_info_latest()
-    first_archive = fetch_archive_since(local_no)
-    rows, mode = verify_sources(info_latest, first_archive, local_no)
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width":1280,"height":900})
+            page = await ctx.new_page()
+            await login(page, email, password)
+            await page.goto(ARCHIVE_PAGE, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(1200)
+            info_latest, archive_rows = await asyncio.gather(fetch_info_latest(page), fetch_archive_since(page, local_no))
+            rows, mode = await verify_sources(page, info_latest, archive_rows, local_no)
+        finally:
+            await browser.close()
+
     newest = rows[-1]
-
-    # A stale source must be an error, never a successful 'no updates' run.
     if newest["draw"] < local_no:
-        raise RuntimeError(f"Official source is stale: LOCAL №{local_no}, API №{newest['draw']}")
+        raise RuntimeError(f"Official browser source is stale: LOCAL №{local_no}, API №{newest['draw']}")
+    if newest["draw"] > local_no:
+        by_no = {x["draw"]: x for x in rows}
+        missing = [n for n in range(local_no + 1, newest["draw"] + 1) if n not in by_no]
+        if missing:
+            raise RuntimeError(f"Official browser API tail has a gap: {missing[:8]}")
 
-    ensure_contiguous(rows, local_no, newest["draw"])
     tail = rows[-TAIL_SIZE:]
     if len(tail) < 3:
-        raise RuntimeError(f"Official API returned only {len(tail)} valid rows")
-
+        raise RuntimeError(f"Official browser API returned only {len(tail)} valid rows")
     OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(
-        f"OFFICIAL API TOP-3 OK ({mode}): {len(tail)} rows; "
-        f"latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}"
-    )
+    print(f"OFFICIAL BROWSER API TOP-3 OK ({mode}): {len(tail)} rows; latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}")
 
 
 def self_test():
     assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
-    assert parse_iso_date("2026-09-12T19:55:00+03:00") == {"date": "2026-09-12", "time": "19:55"}
-    assert combo_from({"combination": {"structured": [1, 7, 8]}}) == "178"
-    assert valid_row({"draw": 267960, "date": "2026-09-12", "time": "19:55", "combo": "178"})
-    print("SELF-TEST OK · official API · 48 draws/day :25/:55")
+    assert parse_iso_date("2026-09-12T19:55:00+03:00") == {"date":"2026-09-12","time":"19:55"}
+    assert combo_from({"combination":{"structured":[1,7,8]}}) == "178"
+    print("SELF-TEST OK · browser official API · 48 draws/day :25/:55")
 
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         self_test()
     else:
-        main()
+        asyncio.run(main())
