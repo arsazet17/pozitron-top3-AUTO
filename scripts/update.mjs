@@ -7,7 +7,7 @@ import {
 
 const TAIL_FILE = "/tmp/top3_official_tail.json";
 let archive = readJSON("data/archive.json", []);
-const bootstrap = readJSON("data/bootstrap-delta.json", []);
+const bootstrapMeta = readJSON("data/bootstrap-tail.json", null);
 const rules = readJSON("data/rules.json", {});
 const state = readJSON("data/app-state.json", createEmptyState());
 const forecastIndex = readJSON("data/forecast-index.json", []);
@@ -20,6 +20,12 @@ if (!fs.existsSync(TAIL_FILE)) throw new Error("Нет /tmp/top3_official_tail.j
 const schedule = rules.schedule;
 const tail = JSON.parse(fs.readFileSync(TAIL_FILE, "utf8"));
 
+function pad2(n){return String(n).padStart(2,"0")}
+function decodePacked(meta){const s=String(meta?.data||"");const out=[];for(let i=0;i+2<s.length;i+=3)out.push(s.slice(i,i+3));return out}
+function addMinutesStamp(date,time,minutes){const [y,m,d]=String(date).split("-").map(Number),[hh,mm]=String(time).split(":").map(Number),x=new Date(Date.UTC(y,m-1,d,hh,mm)+minutes*60000);return {date:`${x.getUTCFullYear()}-${pad2(x.getUTCMonth()+1)}-${pad2(x.getUTCDate())}`,time:`${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`}}
+function expandBootstrap(meta){if(!meta?.data)return[];const combos=decodePacked(meta),out=[];for(let i=0;i<combos.length;i++){const stamp=i===0?meta.first:addMinutesStamp(meta.regularStart.date,meta.regularStart.time,(i-1)*Number(meta.stepMinutes||30)),combo=combos[i];out.push({date:stamp.date,time:stamp.time,A:+combo[0],B:+combo[1],C:+combo[2],combo,draw:String(Number(meta.fromDraw)+i)})}return out}
+const bootstrap=expandBootstrap(bootstrapMeta);
+
 function mergeBootstrap(base, delta) {
   const byDraw = new Map();
   for (const x of base) byDraw.set(String(x.draw || `${x.date}|${x.time}|${x.combo}`), x);
@@ -31,7 +37,7 @@ function mergeBootstrap(base, delta) {
 
 const boot = mergeBootstrap(archive, bootstrap);
 archive = boot.merged;
-if (boot.added) console.log(`BOOTSTRAP: добавлено ${boot.added} фактов из data/bootstrap-delta.json`);
+if (boot.added) console.log(`BOOTSTRAP: добавлено ${boot.added} фактов из data/bootstrap-tail.json`);
 
 function validTailRow(x) {
   return x &&
