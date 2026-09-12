@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "scripts/top3_stoloto_api.mjs"
+      - "scripts/top3_stoloto_sync.py"
       - "scripts/update.mjs"
       - ".github/workflows/update.yml"
       - "top3-sync.trigger"
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4
@@ -35,28 +35,48 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Read verified TOP-3 tail from official Stoloto API
+      - name: Cache Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-top3-playwright-1.54.0-chromium-v1
+
+      - name: Install Playwright
+        run: |
+          python -m pip install --disable-pip-version-check --no-input "playwright==1.54.0"
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m playwright install chromium
+          fi
+
+      - name: Read verified TOP-3 tail through authenticated browser API
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
         run: |
           set -u
           success=0
-          for attempt in 1 2 3; do
-            echo "TOP-3 official API attempt $attempt/3"
-            if node scripts/top3_stoloto_api.mjs; then
+          for attempt in 1 2; do
+            echo "TOP-3 browser API attempt $attempt/2"
+            if python scripts/top3_stoloto_sync.py; then
               success=1
               break
             fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "API retry in 8 sec..."
-              sleep 8
+            if [ "$attempt" -lt 2 ]; then
+              echo "Browser API retry in 10 sec..."
+              sleep 10
             fi
           done
-
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 official API reader failed after 3 attempts."
+            echo "::error::TOP-3 browser API reader failed after 2 attempts."
             exit 1
           fi
 
@@ -69,13 +89,10 @@ jobs:
             echo "No data changes"
             exit 0
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add -- data
-          git commit -m "TOP-3 AUTO · official Stoloto API sync"
-
+          git commit -m "TOP-3 AUTO · official Stoloto browser API sync"
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
