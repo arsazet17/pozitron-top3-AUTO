@@ -21,10 +21,8 @@ SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 
 SCHEDULE_SET = set(SCHEDULE)
 MOSCOW = ZoneInfo("Europe/Moscow")
 
-# Переход старого продукта `top3` -> активного `top-3` произошёл после №267959.
-# Эти две переходные строки нужны ровно один раз, чтобы закрыть разрыв, после чего
-# синхронизация идёт только вперёд по официальному completedDraw из games/info-new.
-# №267961 дополнительно подтверждён официальным games/info-new при диагностике.
+# Одноразовый мост на смене продукта `top3` -> активный `top-3`.
+# После попадания этих фактов в data/archive.json они больше не используются.
 TRANSITION_BRIDGE = {
     267960: {"draw": 267960, "date": "2026-09-12", "time": "19:55", "combo": "178"},
     267961: {"draw": 267961, "date": "2026-09-12", "time": "20:25", "combo": "038"},
@@ -36,11 +34,9 @@ def valid_row(row):
         isinstance(row, dict)
         and isinstance(row.get("draw"), int)
         and row["draw"] >= 100000
-        and isinstance(row.get("date"), str)
-        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"])
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(row.get("date", "")))
         and row.get("time") in SCHEDULE_SET
-        and isinstance(row.get("combo"), str)
-        and re.fullmatch(r"\d{3}", row["combo"])
+        and re.fullmatch(r"\d{3}", str(row.get("combo", "")))
     )
 
 
@@ -110,25 +106,24 @@ def load_local_rows():
 
 async def login(page, email, password):
     await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    login_loc = None
-    pass_loc = None
+    user = password_box = None
     for sel in (
         'input[type="email"]', 'input[name*="email" i]', 'input[name*="login" i]',
         'input[autocomplete="username"]', 'input[type="text"]',
     ):
         loc = page.locator(sel).first
         if await loc.count():
-            login_loc = loc
+            user = loc
             break
     for sel in ('input[type="password"]', 'input[name*="password" i]', 'input[autocomplete="current-password"]'):
         loc = page.locator(sel).first
         if await loc.count():
-            pass_loc = loc
+            password_box = loc
             break
-    if login_loc is None or pass_loc is None:
+    if user is None or password_box is None:
         raise RuntimeError(f"OAuth fields not found; url={page.url}")
-    await login_loc.fill(email)
-    await pass_loc.fill(password)
+    await user.fill(email)
+    await password_box.fill(password)
     btn = page.get_by_role("button", name=re.compile("войти", re.I)).first
     if not await btn.count():
         btn = page.locator('button[type="submit"]').first
@@ -162,12 +157,12 @@ async def browser_json(page, url):
     try:
         return json.loads(result.get("text") or "")
     except Exception as exc:
-        raise RuntimeError(f"Browser API returned non-JSON for {url}: {exc}")
+        raise RuntimeError(f"Browser API returned non-JSON: {exc}")
 
 
 async def fetch_info_latest(page):
-    j = await browser_json(page, INFO_API)
-    games = j.get("games") if isinstance(j, dict) else None
+    payload = await browser_json(page, INFO_API)
+    games = payload.get("games") if isinstance(payload, dict) else None
     if not isinstance(games, list):
         raise RuntimeError("games/info-new: field games is missing")
     game = next((x for x in games if isinstance(x, dict) and x.get("name") == CURRENT_GAME), None)
@@ -182,32 +177,28 @@ async def fetch_info_latest(page):
 def build_tail(local_rows, official_latest):
     local_no = local_rows[-1]["draw"]
     if official_latest["draw"] < local_no:
-        raise RuntimeError(
-            f"Active games/info-new is behind local archive: LOCAL №{local_no}, API №{official_latest['draw']}"
-        )
+        raise RuntimeError(f"Active feed behind local archive: LOCAL №{local_no}, API №{official_latest['draw']}")
 
     merged = {r["draw"]: r for r in local_rows}
     if official_latest["draw"] > local_no:
         for n in range(local_no + 1, official_latest["draw"] + 1):
-            if n == official_latest["draw"]:
-                row = official_latest
-            else:
-                row = TRANSITION_BRIDGE.get(n)
+            row = official_latest if n == official_latest["draw"] else TRANSITION_BRIDGE.get(n)
             if not row:
                 raise RuntimeError(
-                    f"Missed №{n}; info-new only exposes the latest completed draw. "
-                    "Nothing written: a verified bridge/detail source is required."
+                    f"Missed №{n}; active info-new exposes only the latest completed draw. "
+                    "Nothing written: verified bridge/detail source required."
                 )
             merged[n] = row
 
+    # Старый датированный архив исторически содержит ранние пропуски, поэтому
+    # непрерывность проверяем только на рабочем хвосте, который отдаём update.mjs.
     rows = [merged[n] for n in sorted(merged)]
-    # Final anti-leakage/continuity checks.
-    for i in range(1, len(rows)):
-        if rows[i]["draw"] != rows[i-1]["draw"] + 1:
-            raise RuntimeError(f"Non-contiguous TOP-3 tail near №{rows[i-1]['draw']} -> №{rows[i]['draw']}")
     tail = rows[-TAIL_SIZE:]
     if len(tail) < 3:
         raise RuntimeError(f"Only {len(tail)} valid rows available")
+    for i in range(1, len(tail)):
+        if tail[i]["draw"] != tail[i-1]["draw"] + 1:
+            raise RuntimeError(f"Non-contiguous live tail near №{tail[i-1]['draw']} -> №{tail[i]['draw']}")
     return tail
 
 
@@ -219,17 +210,14 @@ async def main():
 
     local_rows = load_local_rows()
     local_no = local_rows[-1]["draw"]
-
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
             ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width":1280,"height":900})
             page = await ctx.new_page()
             await login(page, email, password)
-            # Load a real Stoloto page first: this establishes the same browser/WAF context
-            # in which games/info-new is known to return HTTP 200.
             await page.goto(LANDING_PAGE, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(900)
             official_latest = await fetch_info_latest(page)
         finally:
             await browser.close()
@@ -237,7 +225,7 @@ async def main():
     tail = build_tail(local_rows, official_latest)
     OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
-        f"OFFICIAL ACTIVE TOP-3 OK (games/info-new): latest №{official_latest['draw']} "
+        f"OFFICIAL ACTIVE TOP-3 OK: latest №{official_latest['draw']} "
         f"{official_latest['date']} {official_latest['time']}={official_latest['combo']}; local №{local_no}; tail={len(tail)}"
     )
 
