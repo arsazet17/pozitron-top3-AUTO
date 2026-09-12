@@ -1,5 +1,5 @@
-const CACHE="top3-auto-v122-chat-master-mirror-separate";
-const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
+const CACHE="top3-auto-v130-full-archive-new-schedule-triples";
+const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/pages/home.js","./js/pages/archive.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}))});
 self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})())});
 async function networkFirst(req){try{const r=await fetch(req,{cache:"no-store"});if(r&&r.ok){const c=await caches.open(CACHE);c.put(req,r.clone()).catch(()=>{})}return r}catch{return (await caches.match(req))||Response.error()}}

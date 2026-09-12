@@ -7,8 +7,8 @@ export function mirrorSignalsForBase(base,fact){
   }
   return out;
 }
-export function createMirrorState(records,rules,seedFrom="2026-08-19T04:40:00+03:00"){
-  const historicalSet=new Set(records.map(comboOf));
+export function createMirrorState(records,rules,seedFrom="2026-08-19T04:40:00+03:00",historicalSource=null){
+  const historicalSet=historicalSource instanceof Set?historicalSource:new Set(Array.isArray(historicalSource)&&historicalSource.length?historicalSource:records.map(comboOf));
   const s=sortRecords(records), start=new Date(seedFrom), work=s.filter(r=>new Date(`${r.date}T${r.time}:00+03:00`)>=start);
   let bases=[], lastSignals=[], lastCheck=null, prevFact=null;
   for(const r of work){

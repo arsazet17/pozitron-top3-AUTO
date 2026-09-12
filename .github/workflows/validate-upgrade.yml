@@ -1,0 +1,75 @@
+name: TOP-3 AUTO · Validate upgrade
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build full archive
+        run: node scripts/build-full-archive.mjs
+
+      - name: Verify full archive and repaired dated facts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/full-archive/all.json').read_text(encoding='utf-8'))
+          a=json.loads(Path('data/archive.json').read_text(encoding='utf-8'))
+          latest=json.loads(Path('data/latest.json').read_text(encoding='utf-8'))['draw']
+          assert d['fromDraw']==11, d
+          assert d['toDraw']>=267946, d
+          assert d['total']==d['toDraw']-10, d
+          assert d['undatedCount']==247976, d
+          assert d['datedFromDraw']==247987, d
+          assert d['datedCount']==d['toDraw']-247986, d
+          assert len(d['data'])==d['total']*3
+          assert d['data'][:3]=='699', d['data'][:3]
+          p=(247986-11)*3
+          assert d['data'][p:p+3]=='655', d['data'][p:p+3]
+          assert len(a)==d['datedCount'], (len(a),d['datedCount'])
+          assert int(a[0]['draw'])==247987, a[0]
+          assert int(a[-1]['draw'])==d['toDraw'], a[-1]
+          assert int(latest['draw'])==d['toDraw'], latest
+          assert a[-1]['combo']==d['data'][-3:]==latest['combo']
+          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], 'last', d['data'][-3:])
+          PY
+
+      - name: Verify 48-draw schedule
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('data/rules.json',encoding='utf-8'))
+          s=r['schedule']
+          assert len(s)==48, len(s)
+          assert s[0]=='00:25' and s[-1]=='23:55'
+          assert all(t.endswith(':25') or t.endswith(':55') for t in s)
+          print('SCHEDULE OK', len(s), s[0], s[-1])
+          PY
+
+      - name: Syntax-check browser modules
+        run: |
+          node --check js/app.js
+          node --check js/pages/archive.js
+          node --check js/pages/triples.js
+          node --check js/engine/mirror15.js
+
+      - name: Run strict engine tests
+        run: node tests.mjs

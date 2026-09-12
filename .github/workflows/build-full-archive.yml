@@ -1,0 +1,48 @@
+name: TOP-3 AUTO · Full archive
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build-full-archive.mjs"
+      - "data/bootstrap-tail.json"
+      - ".github/workflows/build-full-archive.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: top3-full-archive-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build compact full archive and repair dated facts
+        run: node scripts/build-full-archive.mjs
+
+      - name: Commit generated archive bundle
+        run: |
+          if [ -z "$(git status --porcelain -- data/full-archive data/archive.json data/latest.json)" ]; then
+            echo "Archive bundle already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/full-archive data/archive.json data/latest.json
+          git commit -m "TOP-3 AUTO · rebuild full archive"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main

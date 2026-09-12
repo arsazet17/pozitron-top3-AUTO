@@ -12,20 +12,24 @@ from playwright.async_api import async_playwright
 LOGIN_URL = "https://oauth.stoloto.ru/login"
 ARCHIVE_URL = "https://m.stoloto.ru/top3/archive/"
 OUT = Path("/tmp/top3_official_tail.json")
-TAIL_SIZE = 20
+TAIL_SIZE = 60
 PAGE_READ_ATTEMPTS = 3
-SCHEDULE = ["02:40","04:40","06:40","07:40","09:40","11:40","13:40","16:25","21:25","22:40"]
+# С 09.09.2026 TOP-3 идёт каждые 30 минут: :25 и :55.
+SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 55)]
 SCHEDULE_SET = set(SCHEDULE)
 MONTHS = {
-    "января":1,"февраля":2,"марта":3,"апреля":4,"мая":5,"июня":6,
-    "июля":7,"августа":8,"сентября":9,"октября":10,"ноября":11,"декабря":12
+    "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
 }
+
 
 def norm(s):
     return re.sub(r"[ \t]+", " ", str(s or "").replace("\xa0", " ")).strip()
 
+
 def moscow_today():
     return (datetime.now(timezone.utc) + timedelta(hours=3)).date()
+
 
 def parse_date_label(label):
     raw = norm(label).lower()
@@ -37,19 +41,21 @@ def parse_date_label(label):
     else:
         m = re.fullmatch(r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", raw)
         if m:
-            y = int(m.group(3))
-            y = y + 2000 if y < 100 else y
-            d = date(y, int(m.group(2)), int(m.group(1)))
+            year = int(m.group(3))
+            if year < 100:
+                year += 2000
+            d = date(year, int(m.group(2)), int(m.group(1)))
         else:
             m = re.fullmatch(r"(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?", raw)
             if not m or m.group(2) not in MONTHS:
                 return None
-            y = int(m.group(3)) if m.group(3) else today.year
-            mm = MONTHS[m.group(2)]
-            if not m.group(3) and mm > today.month + 6:
-                y -= 1
-            d = date(y, mm, int(m.group(1)))
+            year = int(m.group(3)) if m.group(3) else today.year
+            month = MONTHS[m.group(2)]
+            if not m.group(3) and month > today.month + 6:
+                year -= 1
+            d = date(year, month, int(m.group(1)))
     return d.strftime("%Y-%m-%d")
+
 
 def parse_time(text):
     for m in re.finditer(r"\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b", str(text or "")):
@@ -58,9 +64,11 @@ def parse_time(text):
             return tm
     return None
 
+
 def parse_draw(text):
     m = re.search(r"№\s*([0-9]{4,})", str(text or ""))
     return int(m.group(1)) if m else None
+
 
 def parse_combo(text):
     s = norm(text)
@@ -72,6 +80,7 @@ def parse_combo(text):
     m = re.search(r"(?<!\d)(\d{3})(?!\d)", s)
     return m.group(1) if m else None
 
+
 def row_to_record(text, date_label):
     draw = parse_draw(text)
     tm = parse_time(text)
@@ -81,22 +90,23 @@ def row_to_record(text, date_label):
         return {"draw": draw, "date": ds, "time": tm, "combo": combo}
     return None
 
+
 async def login(page, email, password):
     await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
     login_loc = None
     pass_loc = None
-    for sel in [
-        'input[type="email"]','input[name*="email" i]','input[name*="login" i]',
-        'input[autocomplete="username"]','input[type="text"]'
-    ]:
+    for sel in (
+        'input[type="email"]', 'input[name*="email" i]', 'input[name*="login" i]',
+        'input[autocomplete="username"]', 'input[type="text"]',
+    ):
         loc = page.locator(sel).first
         if await loc.count():
             login_loc = loc
             break
-    for sel in [
-        'input[type="password"]','input[name*="password" i]',
-        'input[autocomplete="current-password"]'
-    ]:
+    for sel in (
+        'input[type="password"]', 'input[name*="password" i]',
+        'input[autocomplete="current-password"]',
+    ):
         loc = page.locator(sel).first
         if await loc.count():
             pass_loc = loc
@@ -106,11 +116,11 @@ async def login(page, email, password):
     await login_loc.fill(email)
     await pass_loc.fill(password)
     clicked = False
-    for btn in [
+    for btn in (
         page.get_by_role("button", name=re.compile("войти", re.I)).first,
         page.locator('button[type="submit"]').first,
-        page.locator('input[type="submit"]').first
-    ]:
+        page.locator('input[type="submit"]').first,
+    ):
         if await btn.count():
             await btn.click()
             clicked = True
@@ -127,7 +137,8 @@ async def login(page, email, password):
         if await pw.count():
             raise RuntimeError("Stoloto OAuth login did not complete")
 
-async def primary_dom_collect(page):
+
+async def collect_dom(page):
     raw = await page.locator("body").evaluate(r'''() => {
       const drawRx=/№\s*\d{4,}/;
       const dateRx=/^(Сегодня|Вчера|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+\d{4})?)$/i;
@@ -150,42 +161,37 @@ async def primary_dom_collect(page):
       if(!rows.length){
         rows=all.filter(el=>{
           const t=norm(el.innerText||'');
-          if(!drawRx.test(t)) return false;
-          return ![...el.children].some(ch=>drawRx.test(norm(ch.innerText||'')));
+          return drawRx.test(t) && ![...el.children].some(ch=>drawRx.test(norm(ch.innerText||'')));
         });
       }
       return rows.map(el=>({
-        text: el.innerText || el.textContent || '',
-        dateLabel: nearestDate(el),
-        leafTexts: [...el.querySelectorAll('*')]
-          .filter(n=>n.children.length===0)
-          .map(n=>norm(n.innerText||n.textContent||''))
-          .filter(Boolean)
+        text:el.innerText||el.textContent||'',
+        dateLabel:nearestDate(el),
+        leafTexts:[...el.querySelectorAll('*')].filter(n=>n.children.length===0)
+          .map(n=>norm(n.innerText||n.textContent||'')).filter(Boolean)
       }));
     }''')
     out = []
     carry = None
     for row in raw:
-        text = str(row.get("text", ""))
         label = norm(row.get("dateLabel", ""))
         if label:
             carry = label
-        rec = row_to_record(text, label or carry)
+        rec = row_to_record(str(row.get("text", "")), label or carry)
         if not rec:
-            leaf = " ".join(str(x) for x in row.get("leafTexts", []))
-            rec = row_to_record(leaf, label or carry)
+            rec = row_to_record(" ".join(str(x) for x in row.get("leafTexts", [])), label or carry)
         if rec:
             out.append(rec)
-    uniq = {x["draw"]: x for x in out}
-    return sorted(uniq.values(), key=lambda x: x["draw"])
+    return out
 
-def fallback_text_collect(body_text):
+
+def collect_text(body_text):
     lines = [norm(x) for x in str(body_text or "").splitlines()]
     lines = [x for x in lines if x]
     date_rx = re.compile(
         r"^(Сегодня|Вчера|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|"
         r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
-        r"сентября|октября|ноября|декабря)(?:\s+\d{4})?)$", re.I
+        r"сентября|октября|ноября|декабря)(?:\s+\d{4})?)$", re.I,
     )
     out = []
     current_date = None
@@ -194,59 +200,49 @@ def fallback_text_collect(body_text):
             current_date = line
         if not re.search(r"№\s*\d{4,}", line):
             continue
-        if current_date is None:
-            for j in range(max(0, i-8), i):
-                if date_rx.fullmatch(lines[j]):
-                    current_date = lines[j]
-        chunk = " ".join(lines[i:min(len(lines), i+12)])
+        chunk = " ".join(lines[i:min(len(lines), i + 12)])
         rec = row_to_record(chunk, current_date)
         if rec:
             out.append(rec)
-    uniq = {x["draw"]: x for x in out}
-    return sorted(uniq.values(), key=lambda x: x["draw"])
+    return out
+
 
 async def collect_once(page, attempt):
     try:
         await page.goto(ARCHIVE_URL, wait_until="domcontentloaded", timeout=60000)
-    except Exception as e:
-        print(f"WARN archive goto {attempt}: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"WARN archive goto {attempt}: {exc}", file=sys.stderr)
     try:
         await page.wait_for_load_state("networkidle", timeout=12000)
     except Exception:
         pass
-    await page.wait_for_timeout(2000 + attempt * 600)
-    primary = await primary_dom_collect(page)
+    await page.wait_for_timeout(1800 + attempt * 600)
+    primary = await collect_dom(page)
     try:
         body = await page.locator("body").inner_text(timeout=10000)
     except Exception:
         body = ""
-    fallback = fallback_text_collect(body)
+    fallback = collect_text(body)
     merged = {x["draw"]: x for x in primary}
     for x in fallback:
         merged.setdefault(x["draw"], x)
-    out = sorted(merged.values(), key=lambda x: x["draw"])
-    try:
-        title = await page.title()
-    except Exception:
-        title = ""
-    print(f"TOP-3 page {attempt}/{PAGE_READ_ATTEMPTS}: url={page.url} primary={len(primary)} fallback={len(fallback)} merged={len(out)} title={title!r}")
-    if len(out) < 3:
-        print("BODY HEAD:", norm(body)[:900], file=sys.stderr)
-    return out
+    rows = sorted(merged.values(), key=lambda x: x["draw"])
+    print(f"TOP-3 page {attempt}: primary={len(primary)} fallback={len(fallback)} merged={len(rows)} url={page.url}")
+    return rows
+
 
 async def stable_tail(page):
     best = []
     for attempt in range(1, PAGE_READ_ATTEMPTS + 1):
-        rows = await collect_once(page, attempt)
-        if len(rows) > len(best):
-            best = rows
-        if len(rows) >= 3:
-            await page.wait_for_timeout(900)
-            rows2 = await collect_once(page, attempt)
-            a = {x["draw"]: x for x in rows}
-            b = {x["draw"]: x for x in rows2}
-            common = sorted(set(a) & set(b))
-            stable = [a[n] for n in common if a[n] == b[n]]
+        first = await collect_once(page, attempt)
+        if len(first) > len(best):
+            best = first
+        if len(first) >= 3:
+            await page.wait_for_timeout(800)
+            second = await collect_once(page, attempt)
+            a = {x["draw"]: x for x in first}
+            b = {x["draw"]: x for x in second}
+            stable = [a[n] for n in sorted(set(a) & set(b)) if a[n] == b[n]]
             if len(stable) >= 3:
                 return stable[-TAIL_SIZE:]
         try:
@@ -254,6 +250,7 @@ async def stable_tail(page):
         except Exception:
             pass
     raise RuntimeError(f"Only {len(best)} TOP-3 rows found after retries")
+
 
 async def main():
     email = os.getenv("STOLOTO_EMAIL", "").strip()
@@ -263,7 +260,7 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
-            ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width":390,"height":844})
+            ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width": 390, "height": 844})
             page = await ctx.new_page()
             await login(page, email, password)
             tail = await stable_tail(page)
@@ -275,17 +272,21 @@ async def main():
     last = tail[-1]
     print(f"AUTHORIZED TOP-3 OK: {len(tail)} rows; latest №{last['draw']} {last['date']} {last['time']}={last['combo']}")
 
+
 def self_test():
     cases = [
-        ("№ 267710 02:40 7 8 6", "04.09.2026", "786"),
-        ("Тираж №267711 04:40 числа 0 2 8 суперприз 5 000 000", "4 сентября 2026", "028"),
-        ("№267712 06:40 999", "Сегодня", "999"),
+        ("№ 267947 13:25 9 5 6", "12.09.2026", "956"),
+        ("Тираж №267948 13:55 числа 7 2 9 суперприз 5 000 000", "12 сентября 2026", "729"),
+        ("№267949 14:25 752", "Сегодня", "752"),
     ]
     for text, ds, expected in cases:
         got = row_to_record(text, ds)
         assert got is not None, (text, ds)
         assert got["combo"] == expected, (got, expected)
-    print("SELF-TEST OK")
+        assert got["time"] in SCHEDULE_SET, got
+    assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
+    print("SELF-TEST OK · 48 draws/day :25/:55")
+
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:

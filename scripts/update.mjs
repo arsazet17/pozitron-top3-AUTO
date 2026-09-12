@@ -6,7 +6,8 @@ import {
 } from "./state-engine.mjs";
 
 const TAIL_FILE = "/tmp/top3_official_tail.json";
-const archive = readJSON("data/archive.json", []);
+let archive = readJSON("data/archive.json", []);
+const bootstrapMeta = readJSON("data/bootstrap-tail.json", null);
 const rules = readJSON("data/rules.json", {});
 const state = readJSON("data/app-state.json", createEmptyState());
 const forecastIndex = readJSON("data/forecast-index.json", []);
@@ -18,6 +19,25 @@ if (!fs.existsSync(TAIL_FILE)) throw new Error("Нет /tmp/top3_official_tail.j
 
 const schedule = rules.schedule;
 const tail = JSON.parse(fs.readFileSync(TAIL_FILE, "utf8"));
+
+function pad2(n){return String(n).padStart(2,"0")}
+function decodePacked(meta){const s=String(meta?.data||"");const out=[];for(let i=0;i+2<s.length;i+=3)out.push(s.slice(i,i+3));return out}
+function addMinutesStamp(date,time,minutes){const [y,m,d]=String(date).split("-").map(Number),[hh,mm]=String(time).split(":").map(Number),x=new Date(Date.UTC(y,m-1,d,hh,mm)+minutes*60000);return {date:`${x.getUTCFullYear()}-${pad2(x.getUTCMonth()+1)}-${pad2(x.getUTCDate())}`,time:`${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`}}
+function expandBootstrap(meta){if(!meta?.data)return[];const combos=decodePacked(meta),out=[];for(let i=0;i<combos.length;i++){const stamp=i===0?meta.first:addMinutesStamp(meta.regularStart.date,meta.regularStart.time,(i-1)*Number(meta.stepMinutes||30)),combo=combos[i];out.push({date:stamp.date,time:stamp.time,A:+combo[0],B:+combo[1],C:+combo[2],combo,draw:String(Number(meta.fromDraw)+i)})}return out}
+const bootstrap=expandBootstrap(bootstrapMeta);
+
+function mergeBootstrap(base, delta) {
+  const byDraw = new Map();
+  for (const x of base) byDraw.set(String(x.draw || `${x.date}|${x.time}|${x.combo}`), x);
+  const before = byDraw.size;
+  for (const x of delta || []) byDraw.set(String(x.draw || `${x.date}|${x.time}|${x.combo}`), x);
+  const merged = [...byDraw.values()].sort((a,b) => Number(a.draw || 0) - Number(b.draw || 0));
+  return { merged, added: byDraw.size - before };
+}
+
+const boot = mergeBootstrap(archive, bootstrap);
+archive = boot.merged;
+if (boot.added) console.log(`BOOTSTRAP: добавлено ${boot.added} фактов из data/bootstrap-tail.json`);
 
 function validTailRow(x) {
   return x &&
@@ -31,6 +51,10 @@ function stamp(x) {
   const ms = Date.parse(`${x.date}T${x.time}:00+03:00`);
   if (!Number.isFinite(ms)) throw new Error(`Некорректные дата/время: ${x.date} ${x.time}`);
   return ms;
+}
+
+function saveLatest(rec) {
+  writeJSON("data/latest.json", { updatedAt: new Date().toISOString(), draw: rec });
 }
 
 if (!Array.isArray(tail) || tail.length < 3 || !tail.every(validTailRow)) {
@@ -51,14 +75,15 @@ console.log(
   `STOLOTO №${newestNo} ${tail.at(-1).date} ${tail.at(-1).time}=${tail.at(-1).combo}`
 );
 
-// Frozen создаётся по обычной сетке ДО появления следующего факта.
-// Если Столото затем официально пропустил один/несколько временных слотов,
-// этот же frozen будет перенесён на следующий реально состоявшийся тираж
-// БЕЗ пересчёта комбинаций.
 ensurePendingForecast(archive, state, forecastIndex, rules);
 saveStateBundle(state, forecastIndex);
 
 if (newestNo <= knownNo) {
+  if (boot.added) {
+    writeJSON("data/archive.json", archive);
+    saveLatest(known);
+    saveStateBundle(state, forecastIndex);
+  }
   console.log("Новых официальных тиражей нет.");
   process.exit(0);
 }
@@ -77,12 +102,6 @@ for (let n = knownNo + 1; n <= newestNo; n++) {
   missing.push(row);
 }
 
-// Предварительная проверка всей официальной цепочки:
-// 1) номера идут строго подряд;
-// 2) дата/время двигаются только вперёд;
-// 3) время принадлежит известному набору времени TOP-3.
-// НИКАКОЙ проверки "обязательного следующего слота" здесь больше нет:
-// технический перерыв не является пропущенным тиражом.
 let prev = known;
 for (const row of missing) {
   if (stamp(row) <= stamp(prev)) {
@@ -107,8 +126,6 @@ for (const row of missing) {
     draw: String(row.draw)
   };
 
-  // Если между фактами был технический перерыв, переносим УЖЕ СУЩЕСТВУЮЩИЙ
-  // frozen на фактическое официальное время. Комбинации не пересчитываются.
   const moved = retargetPendingForecastToOfficial(state, forecastIndex, rec);
   if (moved?.retargeted) {
     console.log(
@@ -117,13 +134,8 @@ for (const row of missing) {
     );
   }
 
-  // 1) проверяем frozen на фактически состоявшемся тираже
   settleForecastForFact(rec, state, forecastIndex);
-
-  // 2) добавляем официальный факт
   archive.push(rec);
-
-  // 3) создаём frozen следующего обычного слота
   ensurePendingForecast(archive, state, forecastIndex, rules);
 
   lastAdded = rec;
@@ -131,10 +143,7 @@ for (const row of missing) {
 }
 
 writeJSON("data/archive.json", archive);
-writeJSON("data/latest.json", {
-  updatedAt: new Date().toISOString(),
-  draw: lastAdded
-});
+saveLatest(lastAdded);
 saveStateBundle(state, forecastIndex);
 
 console.log(
