@@ -30,18 +30,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Build compact full archive
+      - name: Build compact full archive and repair dated facts
         run: node scripts/build-full-archive.mjs
 
-      - name: Commit generated full archive
+      - name: Commit generated archive bundle
         run: |
-          if [ -z "$(git status --porcelain -- data/full-archive)" ]; then
-            echo "Full archive already current"
+          if [ -z "$(git status --porcelain -- data/full-archive data/archive.json data/latest.json)" ]; then
+            echo "Archive bundle already current"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data/full-archive
+          git add -- data/full-archive data/archive.json data/latest.json
           git commit -m "TOP-3 AUTO · rebuild full archive"
           git fetch origin main
           git rebase origin/main
