@@ -1,0 +1,57 @@
+name: TOP-3 AUTO · Validate upgrade
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build full archive
+        run: python scripts/build_full_archive.py
+
+      - name: Verify full archive boundaries
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/full-archive/all.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['fromDraw']==11, d
+          assert d['toDraw']==267946, d
+          assert d['total']==267936, d
+          assert len(d['data'])==d['total']*3
+          assert d['data'][-3:]=='572', d['data'][-3:]
+          print('FULL ARCHIVE OK', d['fromDraw'], d['toDraw'], d['total'], d['data'][-3:])
+          PY
+
+      - name: Verify 48-draw schedule
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('data/rules.json',encoding='utf-8'))
+          s=r['schedule']
+          assert len(s)==48, len(s)
+          assert s[0]=='00:25' and s[-1]=='23:55'
+          assert all(t.endswith(':25') or t.endswith(':55') for t in s)
+          print('SCHEDULE OK', len(s), s[0], s[-1])
+          PY
+
+      - name: Run strict engine tests
+        run: node tests.mjs
