@@ -5,9 +5,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "scripts/build_full_archive.py"
+      - "scripts/build-full-archive.mjs"
       - "data/bootstrap-tail.json"
-      - "data/TOP-3_архив_A_B_C_ИСПРАВЛЕННЫЙ_компактно.xlsx"
       - ".github/workflows/build-full-archive.yml"
 
 permissions:
@@ -20,15 +19,19 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: main
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Build compact full archive
-        run: python scripts/build_full_archive.py
+        run: node scripts/build-full-archive.mjs
 
       - name: Commit generated full archive
         run: |
