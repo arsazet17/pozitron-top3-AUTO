@@ -4,7 +4,6 @@ import json
 import os
 import re
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,6 +14,7 @@ LOGIN_URL = "https://oauth.stoloto.ru/login"
 ARCHIVE_PAGE = "https://m.stoloto.ru/top3/archive/"
 ARCHIVE_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/draws/archive"
 INFO_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/games/info-new"
+CURRENT_GAME = "top-3"
 OUT = Path("/tmp/top3_official_tail.json")
 LATEST_FILE = Path("data/latest.json")
 ARCHIVE_FILE = Path("data/archive.json")
@@ -161,13 +161,12 @@ async def login(page, email, password):
 
 
 async def browser_json(page, url):
+    # IMPORTANT: Stoloto WAF rejects artificial cache-buster/query parameters.
+    # Use the exact same URL shape as the real page and let the browser send its normal headers/cookies.
     result = await page.evaluate(
         """async (url) => {
           try {
-            const r = await fetch(url, {
-              method: 'GET', credentials: 'include', cache: 'no-store',
-              headers: { 'Accept':'application/json, text/plain, */*', 'X-Requested-With':'XMLHttpRequest' }
-            });
+            const r = await fetch(url, {method:'GET', credentials:'include'});
             const text = await r.text();
             return {ok:r.ok,status:r.status,url:r.url,text};
           } catch (e) {
@@ -185,21 +184,21 @@ async def browser_json(page, url):
 
 
 async def fetch_info_latest(page):
-    j = await browser_json(page, f"{INFO_API}?_={int(time.time()*1000)}")
+    j = await browser_json(page, INFO_API)
     games = j.get("games") if isinstance(j, dict) else None
     if not isinstance(games, list):
         raise RuntimeError("games/info-new: field games is missing")
-    game = next((x for x in games if isinstance(x, dict) and x.get("name") == "top-3"), None)
+    game = next((x for x in games if isinstance(x, dict) and x.get("name") == CURRENT_GAME), None)
     row = completed_to_row(game.get("completedDraw") if game else None)
     if not row:
-        raise RuntimeError("games/info-new did not return a valid TOP-3 completedDraw")
+        raise RuntimeError("games/info-new did not return a valid current TOP-3 completedDraw")
     return row
 
 
 async def fetch_archive_since(page, local_no):
     rows = []
     for pageno in range(1, MAX_PAGES + 1):
-        url = f"{ARCHIVE_API}?game=top3&count={PAGE_SIZE}&page={pageno}&_={int(time.time()*1000)}"
+        url = f"{ARCHIVE_API}?game={CURRENT_GAME}&count={PAGE_SIZE}&page={pageno}"
         j = await browser_json(page, url)
         raw = j.get("draws") if isinstance(j, dict) else None
         page_rows = [archive_to_row(x) for x in (raw or [])]
@@ -215,10 +214,10 @@ async def fetch_archive_since(page, local_no):
 
 async def verify_sources(page, info_latest, archive_rows, local_no):
     if not archive_rows:
-        raise RuntimeError("Official archive API returned no TOP-3 rows")
+        raise RuntimeError("Current TOP-3 archive API returned no rows")
     archive_latest = archive_rows[-1]
     if same_draw(info_latest, archive_latest):
-        return archive_rows, "browser-archive+info-new"
+        return archive_rows, "current-top-3-archive+info-new"
     if archive_latest["draw"] > info_latest["draw"]:
         common = next((x for x in archive_rows if x["draw"] == info_latest["draw"]), None)
         if not same_draw(common, info_latest):
@@ -227,9 +226,8 @@ async def verify_sources(page, info_latest, archive_rows, local_no):
         confirm = await fetch_archive_since(page, local_no)
         if not confirm or not same_draw(archive_latest, confirm[-1]):
             raise RuntimeError(f"Newest archive draw did not confirm twice: first={archive_latest}; second={confirm[-1] if confirm else None}")
-        print(f"INFO-NEW LAG: №{info_latest['draw']}; archive twice confirmed №{archive_latest['draw']}")
-        return confirm, "browser-archive-twice+info-common"
-    raise RuntimeError(f"Official archive has not caught up with info-new: info-new={info_latest}; archive={archive_latest}")
+        return confirm, "current-top-3-archive-twice+info-common"
+    raise RuntimeError(f"Current TOP-3 archive has not caught up with info-new: info-new={info_latest}; archive={archive_latest}")
 
 
 async def main():
@@ -254,25 +252,26 @@ async def main():
 
     newest = rows[-1]
     if newest["draw"] < local_no:
-        raise RuntimeError(f"Official browser source is stale: LOCAL №{local_no}, API №{newest['draw']}")
+        raise RuntimeError(f"Current official source is stale: LOCAL №{local_no}, API №{newest['draw']}")
     if newest["draw"] > local_no:
         by_no = {x["draw"]: x for x in rows}
         missing = [n for n in range(local_no + 1, newest["draw"] + 1) if n not in by_no]
         if missing:
-            raise RuntimeError(f"Official browser API tail has a gap: {missing[:8]}")
+            raise RuntimeError(f"Current TOP-3 official tail has a gap: {missing[:8]}")
 
     tail = rows[-TAIL_SIZE:]
     if len(tail) < 3:
-        raise RuntimeError(f"Official browser API returned only {len(tail)} valid rows")
+        raise RuntimeError(f"Current TOP-3 official API returned only {len(tail)} valid rows")
     OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OFFICIAL BROWSER API TOP-3 OK ({mode}): {len(tail)} rows; latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}")
+    print(f"OFFICIAL CURRENT TOP-3 OK ({mode}): {len(tail)} rows; latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}")
 
 
 def self_test():
+    assert CURRENT_GAME == "top-3"
     assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
     assert parse_iso_date("2026-09-12T19:55:00+03:00") == {"date":"2026-09-12","time":"19:55"}
-    assert combo_from({"combination":{"structured":[1,7,8]}}) == "178"
-    print("SELF-TEST OK · browser official API · 48 draws/day :25/:55")
+    assert combo_from({"combination":{"structured":[0,3,8,1,2,7]}}) == "038"
+    print("SELF-TEST OK · current game=top-3 · exact browser URLs · :25/:55")
 
 
 if __name__ == "__main__":
