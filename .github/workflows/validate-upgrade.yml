@@ -70,6 +70,7 @@ jobs:
           node --check js/pages/archive.js
           node --check js/pages/triples.js
           node --check js/engine/mirror15.js
+          node --check js/engine/triples-chat.js
 
       - name: Run strict engine tests
         run: node tests.mjs
