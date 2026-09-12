@@ -22,6 +22,9 @@ function pendingIssue(target){const key=`${target.date}|${target.time}`;return [
 function recordKey(x){return x?.draw!=null&&String(x.draw)!==""?`d:${Number(x.draw)}`:`t:${x?.date||""}|${x?.time||""}|${x?.combo||""}`}
 function mergeRecords(base=[],extra=[]){const m=new Map();for(const x of [...base,...extra])if(x&&/^\d{3}$/.test(String(x.combo||"")))m.set(recordKey(x),x);return sortRecords([...m.values()])}
 function decodePacked(part){const s=String(part?.data||"");const out=[];for(let i=0;i+2<s.length;i+=3)out.push(s.slice(i,i+3));return out}
+function pad2(n){return String(n).padStart(2,"0")}
+function addMinutesStamp(date,time,minutes){const [y,m,d]=String(date).split("-").map(Number),[hh,mm]=String(time).split(":").map(Number),x=new Date(Date.UTC(y,m-1,d,hh,mm)+minutes*60000);return {date:`${x.getUTCFullYear()}-${pad2(x.getUTCMonth()+1)}-${pad2(x.getUTCDate())}`,time:`${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`}}
+function expandBootstrap(meta){if(!meta?.data)return[];const combos=decodePacked(meta),out=[];for(let i=0;i<combos.length;i++){const stamp=i===0?meta.first:addMinutesStamp(meta.regularStart.date,meta.regularStart.time,(i-1)*Number(meta.stepMinutes||30)),combo=combos[i];out.push({date:stamp.date,time:stamp.time,A:+combo[0],B:+combo[1],C:+combo[2],combo,draw:String(Number(meta.fromDraw)+i)})}return out}
 async function loadFullArchive(){
   try{
     const packed=await loadJSON("./data/full-archive/all.json");
@@ -56,16 +59,16 @@ function adoptServerState(serverState){if(serverState&&typeof serverState==="obj
 async function refresh(){
   const btn=document.querySelector("#refreshBtn");btn.disabled=true;btn.textContent="Обновляю…";
   try{
-    const [v,serverRecords,bootstrap,serverState,index,latest]=await Promise.all([loadJSON("./data/version.json"),loadJSON("./data/archive.json"),optionalJSON("./data/bootstrap-delta.json",[]),optionalJSON("./data/app-state.json",{}),optionalJSON("./data/forecast-index.json",[]),optionalJSON("./data/latest.json",ctx.latest||null)]);
+    const [v,serverRecords,bootstrap,serverState,index,latest]=await Promise.all([loadJSON("./data/version.json"),loadJSON("./data/archive.json"),optionalJSON("./data/bootstrap-tail.json",null),optionalJSON("./data/app-state.json",{}),optionalJSON("./data/forecast-index.json",[]),optionalJSON("./data/latest.json",ctx.latest||null)]);
     if(v.version!==ctx.version.version){toast(`Новая версия ${v.version}. Перезагрузка…`);setTimeout(()=>location.reload(),700);return}
-    const oldLast=ctx.records?.at(-1)?.combo,records=mergeRecords(serverRecords,bootstrap);ctx={...ctx,records,fullArchive:extendFullArchive(ctx.fullArchive,records),rules:ctx.rules,version:v,forecastIndex:index,latest};adoptServerState(serverState);const newLast=records?.at(-1)?.combo;
+    const oldLast=ctx.records?.at(-1)?.combo,records=mergeRecords(serverRecords,expandBootstrap(bootstrap));ctx={...ctx,records,fullArchive:extendFullArchive(ctx.fullArchive,records),rules:ctx.rules,version:v,forecastIndex:index,latest};adoptServerState(serverState);const newLast=records?.at(-1)?.combo;
     document.querySelector("#sourceDot").className="dot ok";document.querySelector("#sourceText").textContent="Столото: подключено";toast(oldLast!==newLast?`Новый тираж обработан: ${newLast}`:"Данные и MASTER-прогноз актуальны");render();
   }catch(e){toast("Ошибка обновления: "+e.message);document.querySelector("#sourceDot").className="dot bad";document.querySelector("#sourceText").textContent="Столото: ошибка"}
   finally{btn.disabled=false;btn.textContent="↻ Обновить"}
 }
 async function init(){
-  const [serverRecords,rules,version,serverState,index,latest,bootstrap,fullArchive]=await Promise.all([loadJSON("./data/archive.json"),loadJSON("./data/rules.json"),loadJSON("./data/version.json"),optionalJSON("./data/app-state.json",{}),optionalJSON("./data/forecast-index.json",[]),optionalJSON("./data/latest.json",null),optionalJSON("./data/bootstrap-delta.json",[]),loadFullArchive()]);
-  adoptServerState(serverState);const records=mergeRecords(serverRecords,bootstrap);ctx={records,rules,version,forecastIndex:index,latest,fullArchive:extendFullArchive(fullArchive,records)};document.querySelector("#versionBadge").textContent="v"+version.version;
+  const [serverRecords,rules,version,serverState,index,latest,bootstrap,fullArchive]=await Promise.all([loadJSON("./data/archive.json"),loadJSON("./data/rules.json"),loadJSON("./data/version.json"),optionalJSON("./data/app-state.json",{}),optionalJSON("./data/forecast-index.json",[]),optionalJSON("./data/latest.json",null),optionalJSON("./data/bootstrap-tail.json",null),loadFullArchive()]);
+  adoptServerState(serverState);const records=mergeRecords(serverRecords,expandBootstrap(bootstrap));ctx={records,rules,version,forecastIndex:index,latest,fullArchive:extendFullArchive(fullArchive,records)};document.querySelector("#versionBadge").textContent="v"+version.version;
   document.querySelectorAll(".nav").forEach(n=>n.onclick=()=>{page=n.dataset.page;location.hash=page;document.querySelector("#sidebar").classList.remove("open");render()});
   document.querySelector("#menuBtn").onclick=()=>document.querySelector("#sidebar").classList.toggle("open");document.querySelector("#refreshBtn").onclick=refresh;window.addEventListener("hashchange",()=>{page=location.hash.slice(1)||"home";render()});render();
   if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
