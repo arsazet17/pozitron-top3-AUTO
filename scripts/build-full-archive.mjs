@@ -21,39 +21,22 @@ const SEARCH_PARTS=[
 const EARLY_FROM=11, EARLY_TO=247986, EARLY_COUNT=247976, DATED_FROM=247987;
 const OUT_DIR='data/full-archive';
 
-function readJSON(file,fallback){try{return JSON.parse(fs.readFileSync(file,'utf8'))}catch{return structuredClone(fallback)}}
-function pad2(n){return String(n).padStart(2,'0')}
-function addMinutesStamp(date,time,minutes){
-  const [y,m,d]=String(date).split('-').map(Number),[hh,mm]=String(time).split(':').map(Number);
-  const x=new Date(Date.UTC(y,m-1,d,hh,mm)+minutes*60000);
-  return {date:`${x.getUTCFullYear()}-${pad2(x.getUTCMonth()+1)}-${pad2(x.getUTCDate())}`,time:`${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`};
-}
-function decodePacked(meta){const s=String(meta?.data||''),out=[];for(let i=0;i+2<s.length;i+=3)out.push(s.slice(i,i+3));return out}
-function expandBootstrap(meta){
-  if(!meta?.data)return[];
-  const combos=decodePacked(meta),out=[];
-  for(let i=0;i<combos.length;i++){
-    const stamp=i===0?meta.first:addMinutesStamp(meta.regularStart.date,meta.regularStart.time,(i-1)*Number(meta.stepMinutes||30));
-    const combo=combos[i];
-    out.push({draw:String(Number(meta.fromDraw)+i),date:stamp.date,time:stamp.time,A:+combo[0],B:+combo[1],C:+combo[2],combo});
-  }
-  if(meta.count!=null&&out.length!==Number(meta.count))throw new Error(`bootstrap count mismatch ${out.length} != ${meta.count}`);
-  return out;
-}
 async function fetchText(name){
   const r=await fetch(SOURCE_BASE+name,{cache:'no-store'});
   if(!r.ok)throw new Error(`${name}: HTTP ${r.status}`);
   return r.text();
 }
+function isoDate(s){
+  const m=String(s||'').match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
+  if(!m)throw new Error(`bad date ${s}`);
+  return `20${m[3]}-${m[2]}-${m[1]}`;
+}
 async function loadEarlyArchive(){
   const sandbox={TOP3_SEARCH_PACK:''};
   for(const [kind,name] of SEARCH_PARTS){
     const text=await fetchText(name);
-    if(kind==='raw'){
-      sandbox.TOP3_SEARCH_PACK+=text.trim();
-    }else{
-      new Function('window','atob','Uint8Array','Date','Object',text)(sandbox,atob,Uint8Array,Date,Object);
-    }
+    if(kind==='raw')sandbox.TOP3_SEARCH_PACK+=text.trim();
+    else new Function('window','atob','Uint8Array','Date','Object',text)(sandbox,atob,Uint8Array,Date,Object);
   }
   const a=sandbox.TOP3_SEARCH_ARCHIVE;
   if(!a)throw new Error('TOP3_SEARCH_ARCHIVE was not created');
@@ -67,36 +50,41 @@ async function loadEarlyArchive(){
   }
   return out;
 }
-function loadDatedTail(){
-  const archive=readJSON('data/archive.json',[]),bootstrap=expandBootstrap(readJSON('data/bootstrap-tail.json',null));
+async function loadDatedArchive(){
+  const history=JSON.parse(await fetchText('top3-history.json'));
+  if(history.fullArchive!==true)throw new Error('top3-history.json is not marked fullArchive');
+  if(Number(history.archiveFrom)!==DATED_FROM)throw new Error(`dated archive start mismatch: ${history.archiveFrom}`);
   const byDraw=new Map();
-  for(const r of [...archive,...bootstrap]){
-    const id=Number(r?.draw),combo=String(r?.combo||'');
-    if(Number.isInteger(id)&&/^\d{3}$/.test(combo))byDraw.set(id,{...r,draw:String(id),combo});
+  for(const d of history.draws||[]){
+    const id=Number(d.id),a=Number(d.a),b=Number(d.b),c=Number(d.c);
+    if(!Number.isInteger(id)||![a,b,c].every(x=>Number.isInteger(x)&&x>=0&&x<=9))continue;
+    const combo=`${a}${b}${c}`;
+    byDraw.set(id,{date:isoDate(d.date),time:String(d.time),A:a,B:b,C:c,combo,draw:String(id)});
   }
-  const ids=[...byDraw.keys()].filter(x=>x>=DATED_FROM).sort((a,b)=>a-b);
-  if(!ids.length||ids[0]!==DATED_FROM)throw new Error(`dated archive must start at №${DATED_FROM}; got ${ids[0]}`);
-  const last=ids.at(-1);
-  const combos=[];
+  const ids=[...byDraw.keys()].filter(id=>id>=DATED_FROM).sort((a,b)=>a-b);
+  if(!ids.length||ids[0]!==DATED_FROM)throw new Error(`dated rows start mismatch: ${ids[0]}`);
+  const last=Math.max(Number(history.latest)||0,ids.at(-1));
+  const records=[],combos=[];
   for(let id=DATED_FROM;id<=last;id++){
     const r=byDraw.get(id);
-    if(!r)throw new Error(`dated archive gap at №${id}`);
-    combos.push(r.combo);
+    if(!r)throw new Error(`verified dated archive gap at №${id}`);
+    records.push(r);combos.push(r.combo);
   }
-  return {combos,last,rows:byDraw};
+  if(records.at(-1)?.draw!==String(last))throw new Error('dated tail mismatch');
+  return {records,combos,last,updatedAt:history.updatedAt||new Date().toISOString()};
 }
 
-const early=await loadEarlyArchive();
-const dated=loadDatedTail();
+const [early,dated]=await Promise.all([loadEarlyArchive(),loadDatedArchive()]);
 const combos=[...early,...dated.combos];
 const expected=dated.last-EARLY_FROM+1;
 if(combos.length!==expected)throw new Error(`full archive count mismatch ${combos.length} != ${expected}`);
 
 fs.mkdirSync(OUT_DIR,{recursive:true});
 const meta={
-  schema:3,
-  source:'TOP-3 full archive · verified early search pack + dated archive',
-  earlySourceRepo:'arsazet17/pozitron-top3-v1.0',
+  schema:4,
+  source:'TOP-3 full archive · verified early search pack + official dated history',
+  sourceRepo:'arsazet17/pozitron-top3-v1.0',
+  sourceUpdatedAt:dated.updatedAt,
   order:'oldest-to-newest',
   fromDraw:EARLY_FROM,
   toDraw:dated.last,
@@ -109,4 +97,6 @@ const meta={
 };
 fs.writeFileSync(path.join(OUT_DIR,'all.json'),JSON.stringify(meta));
 fs.writeFileSync(path.join(OUT_DIR,'unique.json'),JSON.stringify([...new Set(combos)].sort()));
-console.log(`FULL ARCHIVE OK: №${meta.fromDraw}…№${meta.toDraw}; total=${meta.total}; early=${early.length}; dated=${dated.combos.length}; first=${combos[0]}; last=${combos.at(-1)}`);
+fs.writeFileSync('data/archive.json',JSON.stringify(dated.records,null,2));
+fs.writeFileSync('data/latest.json',JSON.stringify({updatedAt:new Date().toISOString(),draw:dated.records.at(-1)},null,2));
+console.log(`FULL ARCHIVE OK: №${meta.fromDraw}…№${meta.toDraw}; total=${meta.total}; early=${early.length}; dated=${dated.combos.length}; first=${combos[0]}; boundary=${early.at(-1)}; last=${combos.at(-1)}`);
