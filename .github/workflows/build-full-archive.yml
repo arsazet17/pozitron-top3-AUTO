@@ -1,0 +1,45 @@
+name: TOP-3 AUTO · Full archive
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build_full_archive.py"
+      - "data/bootstrap-tail.json"
+      - "data/TOP-3_архив_A_B_C_ИСПРАВЛЕННЫЙ_компактно.xlsx"
+      - ".github/workflows/build-full-archive.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: top3-full-archive-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Build compact full archive
+        run: python scripts/build_full_archive.py
+
+      - name: Commit generated full archive
+        run: |
+          if [ -z "$(git status --porcelain -- data/full-archive)" ]; then
+            echo "Full archive already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/full-archive
+          git commit -m "TOP-3 AUTO · rebuild full archive"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
