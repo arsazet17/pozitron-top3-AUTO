@@ -8,7 +8,6 @@ on:
     branches: [main]
     paths:
       - "scripts/top3_stoloto_sync.py"
-      - "scripts/top3_network_probe.py"
       - "scripts/update.mjs"
       - ".github/workflows/update.yml"
       - "top3-sync.trigger"
@@ -18,12 +17,12 @@ permissions:
 
 concurrency:
   group: top3-stoloto-auto
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 4
 
     steps:
       - uses: actions/checkout@v4
@@ -58,14 +57,7 @@ jobs:
             python -m playwright install chromium
           fi
 
-      - name: Probe Stoloto live network
-        continue-on-error: true
-        env:
-          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
-          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
-        run: python scripts/top3_network_probe.py
-
-      - name: Read verified TOP-3 tail through authenticated browser API
+      - name: Read active TOP-3 completed draw from Stoloto
         env:
           STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
           STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
@@ -73,18 +65,17 @@ jobs:
           set -u
           success=0
           for attempt in 1 2; do
-            echo "TOP-3 browser API attempt $attempt/2"
+            echo "TOP-3 live attempt $attempt/2"
             if python scripts/top3_stoloto_sync.py; then
               success=1
               break
             fi
             if [ "$attempt" -lt 2 ]; then
-              echo "Browser API retry in 10 sec..."
-              sleep 10
+              sleep 8
             fi
           done
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 browser API reader failed after 2 attempts."
+            echo "::error::TOP-3 live reader failed after 2 attempts."
             exit 1
           fi
 
@@ -100,7 +91,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- data
-          git commit -m "TOP-3 AUTO · official Stoloto browser API sync"
+          git commit -m "TOP-3 AUTO · live Stoloto sync"
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
