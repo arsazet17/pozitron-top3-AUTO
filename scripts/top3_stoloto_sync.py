@@ -1,295 +1,245 @@
 #!/usr/bin/env python3
-import asyncio
 import json
-import os
-import re
 import sys
-from datetime import datetime, date, timezone, timedelta
+import time
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from playwright.async_api import async_playwright
-
-LOGIN_URL = "https://oauth.stoloto.ru/login"
-ARCHIVE_URL = "https://m.stoloto.ru/top3/archive/"
+ARCHIVE_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/draws/archive"
+INFO_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/games/info-new"
 OUT = Path("/tmp/top3_official_tail.json")
+LATEST_FILE = Path("data/latest.json")
+ARCHIVE_FILE = Path("data/archive.json")
+PAGE_SIZE = 30
+MAX_PAGES = 20
 TAIL_SIZE = 60
-PAGE_READ_ATTEMPTS = 3
-# С 09.09.2026 TOP-3 идёт каждые 30 минут: :25 и :55.
 SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 55)]
 SCHEDULE_SET = set(SCHEDULE)
-MONTHS = {
-    "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/152 Safari/537.36",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
+MOSCOW = ZoneInfo("Europe/Moscow")
 
 
-def norm(s):
-    return re.sub(r"[ \t]+", " ", str(s or "").replace("\xa0", " ")).strip()
+def get_json(url, attempts=3):
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=35) as r:
+                if r.status != 200:
+                    raise RuntimeError(f"HTTP {r.status}: {url}")
+                return json.loads(r.read().decode("utf-8"))
+        except Exception as exc:
+            last = exc
+            if attempt < attempts:
+                time.sleep(1.5 * attempt)
+    raise RuntimeError(f"Official API read failed: {last}")
 
 
-def moscow_today():
-    return (datetime.now(timezone.utc) + timedelta(hours=3)).date()
-
-
-def parse_date_label(label):
-    raw = norm(label).lower()
-    today = moscow_today()
-    if raw == "сегодня":
-        d = today
-    elif raw == "вчера":
-        d = today - timedelta(days=1)
-    else:
-        m = re.fullmatch(r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", raw)
-        if m:
-            year = int(m.group(3))
-            if year < 100:
-                year += 2000
-            d = date(year, int(m.group(2)), int(m.group(1)))
-        else:
-            m = re.fullmatch(r"(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?", raw)
-            if not m or m.group(2) not in MONTHS:
-                return None
-            year = int(m.group(3)) if m.group(3) else today.year
-            month = MONTHS[m.group(2)]
-            if not m.group(3) and month > today.month + 6:
-                year -= 1
-            d = date(year, month, int(m.group(1)))
-    return d.strftime("%Y-%m-%d")
-
-
-def parse_time(text):
-    for m in re.finditer(r"\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b", str(text or "")):
-        tm = f"{int(m.group(1)):02d}:{m.group(2)}"
-        if tm in SCHEDULE_SET:
-            return tm
-    return None
-
-
-def parse_draw(text):
-    m = re.search(r"№\s*([0-9]{4,})", str(text or ""))
-    return int(m.group(1)) if m else None
-
-
-def parse_combo(text):
-    s = norm(text)
-    s = re.sub(r"№\s*[0-9]{4,}", " ", s)
-    s = re.sub(r"\b(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\b", " ", s)
-    digits = re.findall(r"(?<!\d)([0-9])(?!\d)", s)
-    if len(digits) >= 3:
-        return "".join(digits[:3])
-    m = re.search(r"(?<!\d)(\d{3})(?!\d)", s)
-    return m.group(1) if m else None
-
-
-def row_to_record(text, date_label):
-    draw = parse_draw(text)
-    tm = parse_time(text)
-    combo = parse_combo(text)
-    ds = parse_date_label(date_label) if date_label else None
-    if draw and tm and combo and ds:
-        return {"draw": draw, "date": ds, "time": tm, "combo": combo}
-    return None
-
-
-async def login(page, email, password):
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    login_loc = None
-    pass_loc = None
-    for sel in (
-        'input[type="email"]', 'input[name*="email" i]', 'input[name*="login" i]',
-        'input[autocomplete="username"]', 'input[type="text"]',
-    ):
-        loc = page.locator(sel).first
-        if await loc.count():
-            login_loc = loc
-            break
-    for sel in (
-        'input[type="password"]', 'input[name*="password" i]',
-        'input[autocomplete="current-password"]',
-    ):
-        loc = page.locator(sel).first
-        if await loc.count():
-            pass_loc = loc
-            break
-    if login_loc is None or pass_loc is None:
-        raise RuntimeError(f"OAuth fields not found; url={page.url}")
-    await login_loc.fill(email)
-    await pass_loc.fill(password)
-    clicked = False
-    for btn in (
-        page.get_by_role("button", name=re.compile("войти", re.I)).first,
-        page.locator('button[type="submit"]').first,
-        page.locator('input[type="submit"]').first,
-    ):
-        if await btn.count():
-            await btn.click()
-            clicked = True
-            break
-    if not clicked:
-        raise RuntimeError("OAuth submit button not found")
-    try:
-        await page.wait_for_load_state("domcontentloaded", timeout=20000)
-    except Exception:
-        pass
-    await page.wait_for_timeout(2500)
-    if "oauth.stoloto.ru/login" in page.url:
-        pw = page.locator('input[type="password"]').first
-        if await pw.count():
-            raise RuntimeError("Stoloto OAuth login did not complete")
-
-
-async def collect_dom(page):
-    raw = await page.locator("body").evaluate(r'''() => {
-      const drawRx=/№\s*\d{4,}/;
-      const dateRx=/^(Сегодня|Вчера|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+\d{4})?)$/i;
-      const norm=s=>String(s||'').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
-      const all=[...document.querySelectorAll('body *')];
-      function nearestDate(el){
-        let best=null;
-        for(const node of all){
-          if(node===el || el.contains(node)) continue;
-          const pos=node.compareDocumentPosition(el);
-          if(!(pos & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
-          const t=norm(node.innerText || node.textContent || '');
-          if(!t || t.length>40 || !dateRx.test(t)) continue;
-          if(node.children && node.children.length>3) continue;
-          best=t;
-        }
-        return best;
-      }
-      let rows=[...document.querySelectorAll('tr')].filter(el=>drawRx.test(el.innerText||''));
-      if(!rows.length){
-        rows=all.filter(el=>{
-          const t=norm(el.innerText||'');
-          return drawRx.test(t) && ![...el.children].some(ch=>drawRx.test(norm(ch.innerText||'')));
-        });
-      }
-      return rows.map(el=>({
-        text:el.innerText||el.textContent||'',
-        dateLabel:nearestDate(el),
-        leafTexts:[...el.querySelectorAll('*')].filter(n=>n.children.length===0)
-          .map(n=>norm(n.innerText||n.textContent||'')).filter(Boolean)
-      }));
-    }''')
-    out = []
-    carry = None
-    for row in raw:
-        label = norm(row.get("dateLabel", ""))
-        if label:
-            carry = label
-        rec = row_to_record(str(row.get("text", "")), label or carry)
-        if not rec:
-            rec = row_to_record(" ".join(str(x) for x in row.get("leafTexts", [])), label or carry)
-        if rec:
-            out.append(rec)
-    return out
-
-
-def collect_text(body_text):
-    lines = [norm(x) for x in str(body_text or "").splitlines()]
-    lines = [x for x in lines if x]
-    date_rx = re.compile(
-        r"^(Сегодня|Вчера|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|"
-        r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
-        r"сентября|октября|ноября|декабря)(?:\s+\d{4})?)$", re.I,
+def valid_row(row):
+    return (
+        isinstance(row, dict)
+        and isinstance(row.get("draw"), int)
+        and row["draw"] >= 100000
+        and isinstance(row.get("date"), str)
+        and len(row["date"]) == 10
+        and row.get("time") in SCHEDULE_SET
+        and isinstance(row.get("combo"), str)
+        and len(row["combo"]) == 3
+        and row["combo"].isdigit()
     )
-    out = []
-    current_date = None
-    for i, line in enumerate(lines):
-        if date_rx.fullmatch(line):
-            current_date = line
-        if not re.search(r"№\s*\d{4,}", line):
-            continue
-        chunk = " ".join(lines[i:min(len(lines), i + 12)])
-        rec = row_to_record(chunk, current_date)
-        if rec:
-            out.append(rec)
-    return out
 
 
-async def collect_once(page, attempt):
+def parse_iso_date(value):
+    s = str(value or "")
+    if len(s) < 16 or s[4] != "-" or s[7] != "-" or s[10] != "T":
+        return None
     try:
-        await page.goto(ARCHIVE_URL, wait_until="domcontentloaded", timeout=60000)
-    except Exception as exc:
-        print(f"WARN archive goto {attempt}: {exc}", file=sys.stderr)
+        return {"date": s[:10], "time": s[11:16]}
+    except Exception:
+        return None
+
+
+def parse_epoch_moscow(value):
     try:
-        await page.wait_for_load_state("networkidle", timeout=12000)
+        seconds = float(value)
+    except Exception:
+        return None
+    if seconds > 10_000_000_000:  # tolerate milliseconds if API ever switches units
+        seconds /= 1000.0
+    dt = datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone(MOSCOW)
+    return {"date": dt.strftime("%Y-%m-%d"), "time": dt.strftime("%H:%M")}
+
+
+def combo_from(raw):
+    c = raw.get("combination") if isinstance(raw, dict) else None
+    nums = None
+    if isinstance(c, dict):
+        nums = c.get("structured") or c.get("serialized")
+    if nums is None and isinstance(raw, dict):
+        nums = raw.get("winningCombination")
+    if not isinstance(nums, list) or len(nums) < 3:
+        return None
+    try:
+        vals = [int(nums[i]) for i in range(3)]
+    except Exception:
+        return None
+    if any(n < 0 or n > 9 for n in vals):
+        return None
+    return "".join(str(n) for n in vals)
+
+
+def archive_to_row(raw):
+    if not isinstance(raw, dict):
+        return None
+    dt = parse_iso_date(raw.get("date"))
+    combo = combo_from(raw)
+    try:
+        draw = int(raw.get("number"))
+    except Exception:
+        return None
+    row = {"draw": draw, "date": dt["date"], "time": dt["time"], "combo": combo} if dt and combo else None
+    return row if valid_row(row) else None
+
+
+def completed_to_row(raw):
+    if not isinstance(raw, dict):
+        return None
+    dt = parse_epoch_moscow(raw.get("date"))
+    combo = combo_from(raw)
+    try:
+        draw = int(raw.get("number"))
+    except Exception:
+        return None
+    row = {"draw": draw, "date": dt["date"], "time": dt["time"], "combo": combo} if dt and combo else None
+    return row if valid_row(row) else None
+
+
+def same_draw(a, b):
+    return bool(a and b and all(a.get(k) == b.get(k) for k in ("draw", "date", "time", "combo")))
+
+
+def dedupe(rows):
+    by_no = {}
+    for row in rows:
+        if valid_row(row):
+            by_no[row["draw"]] = row
+    return [by_no[n] for n in sorted(by_no)]
+
+
+def local_latest():
+    try:
+        j = json.loads(LATEST_FILE.read_text(encoding="utf-8"))
+        return int(j.get("draw", {}).get("draw", 0))
     except Exception:
         pass
-    await page.wait_for_timeout(1800 + attempt * 600)
-    primary = await collect_dom(page)
     try:
-        body = await page.locator("body").inner_text(timeout=10000)
+        a = json.loads(ARCHIVE_FILE.read_text(encoding="utf-8"))
+        return max((int(x.get("draw", 0)) for x in a if isinstance(x, dict)), default=0)
     except Exception:
-        body = ""
-    fallback = collect_text(body)
-    merged = {x["draw"]: x for x in primary}
-    for x in fallback:
-        merged.setdefault(x["draw"], x)
-    rows = sorted(merged.values(), key=lambda x: x["draw"])
-    print(f"TOP-3 page {attempt}: primary={len(primary)} fallback={len(fallback)} merged={len(rows)} url={page.url}")
-    return rows
+        return 0
 
 
-async def stable_tail(page):
-    best = []
-    for attempt in range(1, PAGE_READ_ATTEMPTS + 1):
-        first = await collect_once(page, attempt)
-        if len(first) > len(best):
-            best = first
-        if len(first) >= 3:
-            await page.wait_for_timeout(800)
-            second = await collect_once(page, attempt)
-            a = {x["draw"]: x for x in first}
-            b = {x["draw"]: x for x in second}
-            stable = [a[n] for n in sorted(set(a) & set(b)) if a[n] == b[n]]
-            if len(stable) >= 3:
-                return stable[-TAIL_SIZE:]
-        try:
-            await page.reload(wait_until="domcontentloaded", timeout=60000)
-        except Exception:
-            pass
-    raise RuntimeError(f"Only {len(best)} TOP-3 rows found after retries")
+def fetch_info_latest():
+    j = get_json(INFO_API)
+    games = j.get("games") if isinstance(j, dict) else None
+    if not isinstance(games, list):
+        raise RuntimeError("games/info-new: field games is missing")
+    game = next((x for x in games if isinstance(x, dict) and x.get("name") == "top-3"), None)
+    row = completed_to_row(game.get("completedDraw") if game else None)
+    if not row:
+        raise RuntimeError("games/info-new did not return a valid completedDraw for TOP-3")
+    return row
 
 
-async def main():
-    email = os.getenv("STOLOTO_EMAIL", "").strip()
-    password = os.getenv("STOLOTO_PASSWORD", "").strip()
-    if not email or not password:
-        raise RuntimeError("Set STOLOTO_EMAIL and STOLOTO_PASSWORD secrets")
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width": 390, "height": 844})
-            page = await ctx.new_page()
-            await login(page, email, password)
-            tail = await stable_tail(page)
-        finally:
-            await browser.close()
-    if not tail:
-        raise RuntimeError("Authorized TOP-3 tail is empty")
+def fetch_archive_since(local_no):
+    rows = []
+    for page in range(1, MAX_PAGES + 1):
+        q = urllib.parse.urlencode({"game": "top3", "count": PAGE_SIZE, "page": page, "_": int(time.time() * 1000)})
+        j = get_json(f"{ARCHIVE_API}?{q}")
+        raw = j.get("draws") if isinstance(j, dict) else None
+        page_rows = [archive_to_row(x) for x in (raw or [])]
+        page_rows = [x for x in page_rows if x]
+        if not page_rows:
+            break
+        rows.extend(page_rows)
+        oldest = min(x["draw"] for x in page_rows)
+        if oldest <= local_no or len(page_rows) < PAGE_SIZE:
+            break
+    return dedupe(rows)
+
+
+def verify_sources(info_latest, archive_rows, local_no):
+    if not archive_rows:
+        raise RuntimeError("Official archive API returned no TOP-3 rows")
+    archive_latest = archive_rows[-1]
+
+    if same_draw(info_latest, archive_latest):
+        return archive_rows, "archive+info-new"
+
+    if archive_latest["draw"] > info_latest["draw"]:
+        common = next((x for x in archive_rows if x["draw"] == info_latest["draw"]), None)
+        if not same_draw(common, info_latest):
+            raise RuntimeError(f"Official sources disagree: info-new={info_latest}; archive-common={common}")
+        time.sleep(2.5)
+        confirm = fetch_archive_since(local_no)
+        if not confirm or not same_draw(archive_latest, confirm[-1]):
+            raise RuntimeError(f"Newest archive draw did not confirm on second read: first={archive_latest}; second={confirm[-1] if confirm else None}")
+        print(f"INFO-NEW LAG: №{info_latest['draw']}; archive twice confirmed №{archive_latest['draw']}")
+        return confirm, "archive-twice+info-common"
+
+    raise RuntimeError(f"Official archive has not caught up with info-new: info-new={info_latest}; archive={archive_latest}")
+
+
+def ensure_contiguous(rows, local_no, newest_no):
+    if newest_no <= local_no:
+        return
+    by_no = {x["draw"]: x for x in rows}
+    missing = [n for n in range(local_no + 1, newest_no + 1) if n not in by_no]
+    if missing:
+        raise RuntimeError(f"Official API tail has a gap; missing draw(s): {missing[:8]}")
+
+
+def main():
+    local_no = local_latest()
+    info_latest = fetch_info_latest()
+    first_archive = fetch_archive_since(local_no)
+    rows, mode = verify_sources(info_latest, first_archive, local_no)
+    newest = rows[-1]
+
+    # A stale source must be an error, never a successful 'no updates' run.
+    if newest["draw"] < local_no:
+        raise RuntimeError(f"Official source is stale: LOCAL №{local_no}, API №{newest['draw']}")
+
+    ensure_contiguous(rows, local_no, newest["draw"])
+    tail = rows[-TAIL_SIZE:]
+    if len(tail) < 3:
+        raise RuntimeError(f"Official API returned only {len(tail)} valid rows")
+
     OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
-    last = tail[-1]
-    print(f"AUTHORIZED TOP-3 OK: {len(tail)} rows; latest №{last['draw']} {last['date']} {last['time']}={last['combo']}")
+    print(
+        f"OFFICIAL API TOP-3 OK ({mode}): {len(tail)} rows; "
+        f"latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}"
+    )
 
 
 def self_test():
-    cases = [
-        ("№ 267947 13:25 9 5 6", "12.09.2026", "956"),
-        ("Тираж №267948 13:55 числа 7 2 9 суперприз 5 000 000", "12 сентября 2026", "729"),
-        ("№267949 14:25 752", "Сегодня", "752"),
-    ]
-    for text, ds, expected in cases:
-        got = row_to_record(text, ds)
-        assert got is not None, (text, ds)
-        assert got["combo"] == expected, (got, expected)
-        assert got["time"] in SCHEDULE_SET, got
     assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
-    print("SELF-TEST OK · 48 draws/day :25/:55")
+    assert parse_iso_date("2026-09-12T19:55:00+03:00") == {"date": "2026-09-12", "time": "19:55"}
+    assert combo_from({"combination": {"structured": [1, 7, 8]}}) == "178"
+    assert valid_row({"draw": 267960, "date": "2026-09-12", "time": "19:55", "combo": "178"})
+    print("SELF-TEST OK · official API · 48 draws/day :25/:55")
 
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         self_test()
     else:
-        asyncio.run(main())
+        main()
