@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "scripts/top3_stoloto_sync.py"
+      - "scripts/top3_network_probe.py"
       - "scripts/update.mjs"
       - ".github/workflows/update.yml"
       - "top3-sync.trigger"
@@ -56,6 +57,13 @@ jobs:
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
             python -m playwright install chromium
           fi
+
+      - name: Probe Stoloto live network
+        continue-on-error: true
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
+        run: python scripts/top3_network_probe.py
 
       - name: Read verified TOP-3 tail through authenticated browser API
         env:
