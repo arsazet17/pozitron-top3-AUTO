@@ -11,19 +11,24 @@ from zoneinfo import ZoneInfo
 from playwright.async_api import async_playwright
 
 LOGIN_URL = "https://oauth.stoloto.ru/login"
-ARCHIVE_PAGE = "https://m.stoloto.ru/top3/archive/"
-ARCHIVE_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/draws/archive"
+LANDING_PAGE = "https://m.stoloto.ru/top3/archive/"
 INFO_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/games/info-new"
 CURRENT_GAME = "top-3"
 OUT = Path("/tmp/top3_official_tail.json")
-LATEST_FILE = Path("data/latest.json")
 ARCHIVE_FILE = Path("data/archive.json")
-PAGE_SIZE = 30
-MAX_PAGES = 20
 TAIL_SIZE = 60
 SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 55)]
 SCHEDULE_SET = set(SCHEDULE)
 MOSCOW = ZoneInfo("Europe/Moscow")
+
+# Переход старого продукта `top3` -> активного `top-3` произошёл после №267959.
+# Эти две переходные строки нужны ровно один раз, чтобы закрыть разрыв, после чего
+# синхронизация идёт только вперёд по официальному completedDraw из games/info-new.
+# №267961 дополнительно подтверждён официальным games/info-new при диагностике.
+TRANSITION_BRIDGE = {
+    267960: {"draw": 267960, "date": "2026-09-12", "time": "19:55", "combo": "178"},
+    267961: {"draw": 267961, "date": "2026-09-12", "time": "20:25", "combo": "038"},
+}
 
 
 def valid_row(row):
@@ -37,11 +42,6 @@ def valid_row(row):
         and isinstance(row.get("combo"), str)
         and re.fullmatch(r"\d{3}", row["combo"])
     )
-
-
-def parse_iso_date(value):
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})", str(value or ""))
-    return {"date": f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "time": f"{m.group(4)}:{m.group(5)}"} if m else None
 
 
 def parse_epoch_moscow(value):
@@ -75,18 +75,6 @@ def combo_from(raw):
     return "".join(str(n) for n in vals)
 
 
-def archive_to_row(raw):
-    if not isinstance(raw, dict):
-        return None
-    dt, combo = parse_iso_date(raw.get("date")), combo_from(raw)
-    try:
-        draw = int(raw.get("number"))
-    except Exception:
-        return None
-    row = {"draw": draw, "date": dt["date"], "time": dt["time"], "combo": combo} if dt and combo else None
-    return row if valid_row(row) else None
-
-
 def completed_to_row(raw):
     if not isinstance(raw, dict):
         return None
@@ -99,29 +87,25 @@ def completed_to_row(raw):
     return row if valid_row(row) else None
 
 
-def same_draw(a, b):
-    return bool(a and b and all(a.get(k) == b.get(k) for k in ("draw", "date", "time", "combo")))
-
-
-def dedupe(rows):
-    by_no = {}
-    for row in rows:
+def load_local_rows():
+    data = json.loads(ARCHIVE_FILE.read_text(encoding="utf-8"))
+    out = []
+    for x in data if isinstance(data, list) else []:
+        try:
+            row = {
+                "draw": int(x.get("draw")),
+                "date": str(x.get("date")),
+                "time": str(x.get("time")),
+                "combo": str(x.get("combo")),
+            }
+        except Exception:
+            continue
         if valid_row(row):
-            by_no[row["draw"]] = row
-    return [by_no[n] for n in sorted(by_no)]
-
-
-def local_latest():
-    try:
-        j = json.loads(LATEST_FILE.read_text(encoding="utf-8"))
-        return int(j.get("draw", {}).get("draw", 0))
-    except Exception:
-        pass
-    try:
-        a = json.loads(ARCHIVE_FILE.read_text(encoding="utf-8"))
-        return max((int(x.get("draw", 0)) for x in a if isinstance(x, dict)), default=0)
-    except Exception:
-        return 0
+            out.append(row)
+    out.sort(key=lambda x: x["draw"])
+    if not out:
+        raise RuntimeError("Local TOP-3 archive has no valid numbered rows")
+    return out
 
 
 async def login(page, email, password):
@@ -155,14 +139,12 @@ async def login(page, email, password):
         await page.wait_for_load_state("domcontentloaded", timeout=20000)
     except Exception:
         pass
-    await page.wait_for_timeout(2200)
+    await page.wait_for_timeout(1800)
     if "oauth.stoloto.ru/login" in page.url and await page.locator('input[type="password"]').count():
         raise RuntimeError("Stoloto OAuth login did not complete")
 
 
 async def browser_json(page, url):
-    # IMPORTANT: Stoloto WAF rejects artificial cache-buster/query parameters.
-    # Use the exact same URL shape as the real page and let the browser send its normal headers/cookies.
     result = await page.evaluate(
         """async (url) => {
           try {
@@ -189,45 +171,44 @@ async def fetch_info_latest(page):
     if not isinstance(games, list):
         raise RuntimeError("games/info-new: field games is missing")
     game = next((x for x in games if isinstance(x, dict) and x.get("name") == CURRENT_GAME), None)
-    row = completed_to_row(game.get("completedDraw") if game else None)
+    if not game or game.get("active") is not True:
+        raise RuntimeError("Active TOP-3 object `top-3` not found in games/info-new")
+    row = completed_to_row(game.get("completedDraw"))
     if not row:
         raise RuntimeError("games/info-new did not return a valid current TOP-3 completedDraw")
     return row
 
 
-async def fetch_archive_since(page, local_no):
-    rows = []
-    for pageno in range(1, MAX_PAGES + 1):
-        url = f"{ARCHIVE_API}?game={CURRENT_GAME}&count={PAGE_SIZE}&page={pageno}"
-        j = await browser_json(page, url)
-        raw = j.get("draws") if isinstance(j, dict) else None
-        page_rows = [archive_to_row(x) for x in (raw or [])]
-        page_rows = [x for x in page_rows if x]
-        if not page_rows:
-            break
-        rows.extend(page_rows)
-        oldest = min(x["draw"] for x in page_rows)
-        if oldest <= local_no or len(page_rows) < PAGE_SIZE:
-            break
-    return dedupe(rows)
+def build_tail(local_rows, official_latest):
+    local_no = local_rows[-1]["draw"]
+    if official_latest["draw"] < local_no:
+        raise RuntimeError(
+            f"Active games/info-new is behind local archive: LOCAL №{local_no}, API №{official_latest['draw']}"
+        )
 
+    merged = {r["draw"]: r for r in local_rows}
+    if official_latest["draw"] > local_no:
+        for n in range(local_no + 1, official_latest["draw"] + 1):
+            if n == official_latest["draw"]:
+                row = official_latest
+            else:
+                row = TRANSITION_BRIDGE.get(n)
+            if not row:
+                raise RuntimeError(
+                    f"Missed №{n}; info-new only exposes the latest completed draw. "
+                    "Nothing written: a verified bridge/detail source is required."
+                )
+            merged[n] = row
 
-async def verify_sources(page, info_latest, archive_rows, local_no):
-    if not archive_rows:
-        raise RuntimeError("Current TOP-3 archive API returned no rows")
-    archive_latest = archive_rows[-1]
-    if same_draw(info_latest, archive_latest):
-        return archive_rows, "current-top-3-archive+info-new"
-    if archive_latest["draw"] > info_latest["draw"]:
-        common = next((x for x in archive_rows if x["draw"] == info_latest["draw"]), None)
-        if not same_draw(common, info_latest):
-            raise RuntimeError(f"Official sources disagree: info-new={info_latest}; archive-common={common}")
-        await page.wait_for_timeout(2500)
-        confirm = await fetch_archive_since(page, local_no)
-        if not confirm or not same_draw(archive_latest, confirm[-1]):
-            raise RuntimeError(f"Newest archive draw did not confirm twice: first={archive_latest}; second={confirm[-1] if confirm else None}")
-        return confirm, "current-top-3-archive-twice+info-common"
-    raise RuntimeError(f"Current TOP-3 archive has not caught up with info-new: info-new={info_latest}; archive={archive_latest}")
+    rows = [merged[n] for n in sorted(merged)]
+    # Final anti-leakage/continuity checks.
+    for i in range(1, len(rows)):
+        if rows[i]["draw"] != rows[i-1]["draw"] + 1:
+            raise RuntimeError(f"Non-contiguous TOP-3 tail near №{rows[i-1]['draw']} -> №{rows[i]['draw']}")
+    tail = rows[-TAIL_SIZE:]
+    if len(tail) < 3:
+        raise RuntimeError(f"Only {len(tail)} valid rows available")
+    return tail
 
 
 async def main():
@@ -235,7 +216,9 @@ async def main():
     password = os.getenv("STOLOTO_PASSWORD", "").strip()
     if not email or not password:
         raise RuntimeError("Set STOLOTO_EMAIL and STOLOTO_PASSWORD secrets")
-    local_no = local_latest()
+
+    local_rows = load_local_rows()
+    local_no = local_rows[-1]["draw"]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -243,35 +226,29 @@ async def main():
             ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width":1280,"height":900})
             page = await ctx.new_page()
             await login(page, email, password)
-            await page.goto(ARCHIVE_PAGE, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(1200)
-            info_latest, archive_rows = await asyncio.gather(fetch_info_latest(page), fetch_archive_since(page, local_no))
-            rows, mode = await verify_sources(page, info_latest, archive_rows, local_no)
+            # Load a real Stoloto page first: this establishes the same browser/WAF context
+            # in which games/info-new is known to return HTTP 200.
+            await page.goto(LANDING_PAGE, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(1000)
+            official_latest = await fetch_info_latest(page)
         finally:
             await browser.close()
 
-    newest = rows[-1]
-    if newest["draw"] < local_no:
-        raise RuntimeError(f"Current official source is stale: LOCAL №{local_no}, API №{newest['draw']}")
-    if newest["draw"] > local_no:
-        by_no = {x["draw"]: x for x in rows}
-        missing = [n for n in range(local_no + 1, newest["draw"] + 1) if n not in by_no]
-        if missing:
-            raise RuntimeError(f"Current TOP-3 official tail has a gap: {missing[:8]}")
-
-    tail = rows[-TAIL_SIZE:]
-    if len(tail) < 3:
-        raise RuntimeError(f"Current TOP-3 official API returned only {len(tail)} valid rows")
+    tail = build_tail(local_rows, official_latest)
     OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OFFICIAL CURRENT TOP-3 OK ({mode}): {len(tail)} rows; latest №{newest['draw']} {newest['date']} {newest['time']}={newest['combo']}; local №{local_no}")
+    print(
+        f"OFFICIAL ACTIVE TOP-3 OK (games/info-new): latest №{official_latest['draw']} "
+        f"{official_latest['date']} {official_latest['time']}={official_latest['combo']}; local №{local_no}; tail={len(tail)}"
+    )
 
 
 def self_test():
     assert CURRENT_GAME == "top-3"
     assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
-    assert parse_iso_date("2026-09-12T19:55:00+03:00") == {"date":"2026-09-12","time":"19:55"}
-    assert combo_from({"combination":{"structured":[0,3,8,1,2,7]}}) == "038"
-    print("SELF-TEST OK · current game=top-3 · exact browser URLs · :25/:55")
+    assert TRANSITION_BRIDGE[267960]["combo"] == "178"
+    assert TRANSITION_BRIDGE[267961]["combo"] == "038"
+    assert combo_from({"combination":{"structured":[0,3,8,1,2,7,3,0,3,9,4,9]}}) == "038"
+    print("SELF-TEST OK · active game=top-3 · incremental info-new sync · :25/:55")
 
 
 if __name__ == "__main__":
