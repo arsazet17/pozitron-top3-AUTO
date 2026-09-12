@@ -15,7 +15,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 4
 
     steps:
       - uses: actions/checkout@v4
@@ -36,46 +36,24 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Cache Chromium
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-top3-playwright-1.54.0-chromium-v1
-
-      - name: Install Playwright package
-        run: |
-          python -m pip install --disable-pip-version-check --no-input "playwright==1.54.0"
-
-      - name: Install Chromium system dependencies
-        run: |
-          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-            python -m playwright install-deps chromium
-          else
-            python -m playwright install --with-deps chromium
-          fi
-
-      - name: Read authorized TOP-3 tail from Stoloto
-        env:
-          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
-          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
+      - name: Read verified TOP-3 tail from official Stoloto API
         run: |
           set -u
           success=0
           for attempt in 1 2 3; do
-            echo "TOP-3 authorized reader attempt $attempt/3"
+            echo "TOP-3 official API attempt $attempt/3"
             if python scripts/top3_stoloto_sync.py; then
               success=1
               break
             fi
             if [ "$attempt" -lt 3 ]; then
-              echo "Reader retry in 20 sec..."
-              sleep 20
+              echo "API retry in 10 sec..."
+              sleep 10
             fi
           done
 
           if [ "$success" -ne 1 ]; then
-            echo "::error::TOP-3 authorized reader failed after 3 attempts."
+            echo "::error::TOP-3 official API reader failed after 3 attempts."
             exit 1
           fi
 
@@ -93,7 +71,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -- data
-          git commit -m "TOP-3 AUTO · authorized Stoloto sync"
+          git commit -m "TOP-3 AUTO · official Stoloto API sync"
 
           git fetch origin main
           git rebase origin/main
