@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/top3_stoloto_api.mjs"
+      - "scripts/update.mjs"
+      - ".github/workflows/update.yml"
+      - "top3-sync.trigger"
 
 permissions:
   contents: write
@@ -15,7 +22,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 3
 
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +35,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -42,13 +45,13 @@ jobs:
           success=0
           for attempt in 1 2 3; do
             echo "TOP-3 official API attempt $attempt/3"
-            if python scripts/top3_stoloto_sync.py; then
+            if node scripts/top3_stoloto_api.mjs; then
               success=1
               break
             fi
             if [ "$attempt" -lt 3 ]; then
-              echo "API retry in 10 sec..."
-              sleep 10
+              echo "API retry in 8 sec..."
+              sleep 8
             fi
           done
 
