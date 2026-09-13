@@ -3,6 +3,14 @@ name: TOP-3 AUTO · Validate upgrade
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "js/engine/**"
+      - "js/pages/**"
+      - "tests.mjs"
+      - "data/rules.json"
+      - ".github/workflows/validate-upgrade.yml"
   workflow_dispatch:
 
 permissions:
