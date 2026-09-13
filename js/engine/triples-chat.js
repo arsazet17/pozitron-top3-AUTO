@@ -1,7 +1,9 @@
 /* TOP-3 · Тройни M1/M2/M3 · правила синхронизированы с чатом «🔮🔮Топ тройни🔮🔮». */
 
-export const TRIPLE_CHAT_RULE_CODE = "TOP3-3METHODS-CHAT-12.09.2026";
+export const TRIPLE_CHAT_RULE_CODE = "TOP3-3METHODS-SERIAL-LEADER-13.09.2026";
 export const TRIPLE_CHAT_SEED_ID = 267958;
+export const SERIAL_LEADER_RULE_START_ID = 268003;
+export const SERIAL_LEADER_TTL = 5;
 
 export const M2_MAP = Object.freeze({
   "000":["757","353"], "111":["930","170"], "222":["560","540"], "333":["487","623"], "444":["375","735"],
@@ -50,10 +52,12 @@ const SEED_STATE = {
   m2Ready: [],
   m3: [{triple:"777",stage:2,sourceId:267955,sourceCode:"915",bornCode:"268",bornAt:267957}],
   packageForecast: [],
+  serialLeaders: [],
+  additionStreaks: {},
   frozen: ["777"],
-  birthsWindow: SEED_ROWS.map(r=>({id:r[0],births:[...(SEED_BIRTHS.get(r[0])||[])]})),
-  archive: SEED_ROWS.map(r=>({id:r[0],date:r[1],time:r[2],fact:r[3],before:r[4],check:r[5],after:r[6]})),
-  diag: {blocks:[],raw:[],packages:[],dependency:[],mirror:"002",mirrorPass:true,mirrorHits:null,m2Events:[]}
+  birthsWindow: SEED_ROWS.map(r=>({id:r[0],births:[...(SEED_BIRTHS.get(r[0])||[])],additionBirths:[]})),
+  archive: SEED_ROWS.map(r=>({id:r[0],date:r[1],time:r[2],fact:r[3],before:r[4],check:r[5],after:r[6],serial:"—"})),
+  diag: {blocks:[],raw:[],packages:[],dependency:[],mirror:"002",mirrorPass:true,mirrorHits:null,m2Events:[],serialEvents:[]}
 };
 
 const MIRROR = Object.freeze({0:0,1:9,2:8,3:7,4:6,5:5,6:4,7:3,8:2,9:1});
@@ -95,6 +99,39 @@ export function pairEval(a,b){
   }
   const z={exact,blocked:false,triples:[...triples].sort(tripleSort),paths};
   pairCache.set(key,z);return z;
+}
+
+export function advanceSerialLeaders(active=[],previousStreaks={},additionBirths=[],currentId=0){
+  const births=uniq((additionBirths||[]).filter(isTriple));
+  const birthSet=new Set(births),streaks={};
+  for(const t of births)streaks[t]=birthSet.has(t)?Number(previousStreaks?.[t]||0)+1:1;
+
+  const next=[];
+  for(const x of active||[]){
+    const rem=Number(x.rem||0)-1;
+    if(rem>0)next.push({...x,rem});
+  }
+
+  const events=[];
+  if(Number(currentId)>=SERIAL_LEADER_RULE_START_ID){
+    for(const t of births){
+      const streak=streaks[t];
+      if(streak<2)continue;
+      const old=next.find(x=>x.triple===t);
+      if(old){
+        old.rem=SERIAL_LEADER_TTL;
+        old.streak=streak;
+        old.lastBirthAt=Number(currentId);
+        events.push(`${t}: серия ${streak} подряд → лидер продлён на ${SERIAL_LEADER_TTL} тиражей`);
+      }else{
+        next.push({triple:t,rem:SERIAL_LEADER_TTL,streak,activatedAt:Number(currentId),lastBirthAt:Number(currentId)});
+        events.push(`${t}: серия ${streak} подряд → НОВЫЙ ЛИДЕР на ${SERIAL_LEADER_TTL} тиражей`);
+      }
+    }
+  }
+
+  next.sort((a,b)=>tripleSort(a.triple,b.triple));
+  return {active:next,streaks,events};
 }
 
 function chronological(records=[]){
@@ -150,12 +187,13 @@ function packageGroups(raw,indexById){
 }
 
 function fmtList(a){return a&&a.length?uniq(a).join(" / "):"—"}
+function fmtSerial(a){return a&&a.length?a.map(x=>`${x.triple} · rem${x.rem} · серия ${x.streak}`).join(" / "):"—"}
 
 function processForward(state,current,allReal,counts){
   const before=[...state.frozen],fact=current.code;
   const check=!before.length?"сигнала не было":before.includes(fact)?"✅ HIT":"❌ мимо";
   const older=allReal.filter(d=>d.id<current.id),idxMap=new Map(allReal.map((d,i)=>[d.id,i])),previous15=older.slice(-15);
-  const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[]};
+  const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[],serialEvents:[]};
 
   const carriedM3=[];
   for(const b of state.m3)if(b.stage===1)carriedM3.push({...b,stage:2});
@@ -223,10 +261,14 @@ function processForward(state,current,allReal,counts){
     if(normalM3.some(x=>x.sourceId===r.sourceId&&x.triple===r.triple))diag.dependency.push(`${r.triple}: M1/M3 same-source ${r.sourceCode}+${fact}`);
   }
 
+  const additionBirths=uniq([...normalM1,...normalM3].map(r=>r.triple));
   const births=[];
   if(packages.length)births.push("000");
-  for(const r of [...normalM1,...normalM3])if(!births.includes(r.triple))births.push(r.triple);
+  for(const t of additionBirths)if(!births.includes(t))births.push(t);
   for(const r of newReady)if(!births.includes(r.triple))births.push(r.triple);
+
+  const serial=advanceSerialLeaders(state.serialLeaders,state.additionStreaks,additionBirths,current.id);
+  diag.serialEvents=serial.events;
 
   const nextBases=state.m1Bases.map(b=>({...b,rem:b.rem-1})).filter(b=>b.rem>0);
   const gate=mirrorGate(fact,counts,older);
@@ -235,14 +277,20 @@ function processForward(state,current,allReal,counts){
 
   const m2Ready=[...carriedReady,...newReady];
   const m3=[...carriedM3,...newM3];
-  const frozen=uniq([...packages,...m1Forecast,...m2Ready.map(x=>x.triple),...m3.map(x=>x.triple)]);
+  const frozen=uniq([...packages,...m1Forecast,...m2Ready.map(x=>x.triple),...m3.map(x=>x.triple),...serial.active.map(x=>x.triple)]);
   let checkText=check;
   if(check==="❌ мимо"&&before.length&&frozen.length===0)checkText+=" и истёк";
 
-  Object.assign(state,{m1Bases:nextBases,m1Forecast,m2Windows:windows,m2Ready,m3,packageForecast:packages,frozen,diag});
-  state.archive.push({id:current.id,date:current.date,time:current.time,fact,before:fmtList(before),check:checkText,after:fmtList(frozen)});
+  Object.assign(state,{
+    m1Bases:nextBases,m1Forecast,m2Windows:windows,m2Ready,m3,packageForecast:packages,
+    serialLeaders:serial.active,additionStreaks:serial.streaks,frozen,diag
+  });
+  state.archive.push({
+    id:current.id,date:current.date,time:current.time,fact,before:fmtList(before),check:checkText,
+    after:fmtList(frozen),serial:fmtSerial(serial.active)
+  });
   state.archive=state.archive.slice(-20);
-  state.birthsWindow.push({id:current.id,births:uniq(births)});
+  state.birthsWindow.push({id:current.id,births:uniq(births),additionBirths});
   state.birthsWindow=state.birthsWindow.slice(-20);
   return state;
 }
@@ -275,6 +323,8 @@ export function computeTripleChat(records=[],fullArchive=null){
       m3:state.m3,
       windows:state.m2Windows,
       packages:state.packageForecast,
+      serialLeaders:state.serialLeaders,
+      additionStreaks:state.additionStreaks,
       frozen:state.frozen,
       diag:state.diag,
       leader:L,
