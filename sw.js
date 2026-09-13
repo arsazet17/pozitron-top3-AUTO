@@ -1,4 +1,4 @@
-const CACHE="top3-auto-v131-triples-m1-m2-m3";
+const CACHE="top3-auto-v132-serial-leader-5";
 const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/engine/triples-chat.js","./js/pages/home.js","./js/pages/archive.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}))});
 self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})())});
