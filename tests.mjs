@@ -6,6 +6,7 @@ import {
   computeTripleChat,M2_MAP,pairEval,TRIPLE_CHAT_RULE_CODE,TRIPLE_CHAT_SEED_ID,
   SERIAL_LEADER_RULE_START_ID,SERIAL_LEADER_TTL,advanceSerialLeaders
 } from "./js/engine/triples-chat.js";
+import {ALL_LINKS_RULE_CODE,computeAllLinksForRows,computeTripleAllLinks} from "./js/engine/triple-all-links.js";
 
 const records=JSON.parse(fs.readFileSync("./data/archive.json","utf8"));
 const rules=JSON.parse(fs.readFileSync("./data/rules.json","utf8"));
@@ -52,6 +53,17 @@ ok(serialRestart.active[0]?.rem===3&&serialRestart.streaks["444"]===1,"non-conse
 const serialContinue=advanceSerialLeaders(serial2.active,serial2.streaks,["444"],268004);
 ok(serialContinue.active[0]?.rem===5&&serialContinue.active[0]?.streak===3,"third consecutive addition birth must refresh leader back to rem5");
 
+ok(ALL_LINKS_RULE_CODE==="TOP3-ALL-LINKS-V1-14SEP2026-0255","all-links transfer code");
+const auditRows=records.filter(r=>{const k=`${r.date} ${r.time}`;return k>="2026-09-11 22:55"&&k<="2026-09-14 01:55"});
+const audit=computeAllLinksForRows(auditRows);
+const expectedLinks={"111":26,"222":28,"333":38,"444":40,"555":42,"666":29,"777":23,"888":31,"999":31,"000":23};
+ok(audit.rows===103,"all-links control interval must contain 103 draws");
+for(const [t,n] of Object.entries(expectedLinks))ok(audit.counts[t]===n,`all-links audit ${t} must equal ${n}`);
+ok(audit.total===311,"all-links control total must equal 311");
+const currentAllLinks=computeTripleAllLinks(records);
+ok(currentAllLinks.ranking?.length===10,"all-links current ranking must contain all 10 triples");
+ok(currentAllLinks.ranking?.every(x=>Number.isInteger(x.rank)&&Number.isInteger(x.count)),"all-links ranking must expose rank and all-link count");
+
 const seedRecords=records.filter(r=>Number(r.draw)<=TRIPLE_CHAT_SEED_ID);
 const seedTriple=computeTripleChat(seedRecords,fullArchive);
 ok(seedTriple.snapshot?.frozen?.join("/")==="777","seed frozen after №267958 must be 777");
@@ -70,5 +82,6 @@ ok((triple.snapshot?.birthsWindow||[]).every(x=>Array.isArray(x.additionBirths))
 
 console.log("CHAT MASTER target",target,"MASTER",f.master?.combos,"families",f.master?.families);
 console.log("TRIPLES",triple.snapshot?.frozen,"leader",triple.snapshot?.leader?.leaders,"×",triple.snapshot?.leader?.max,"serial",triple.snapshot?.serialLeaders);
+console.log("ALL-LINKS",currentAllLinks.anchor?.code,"start",currentAllLinks.start?.date,currentAllLinks.start?.time,"ranking",currentAllLinks.ranking?.map(x=>`${x.rank}:${x.triple}=${x.count}`).join(" "));
 if(fail.length){console.error("STRICT CONTROL FAILED");fail.forEach(x=>console.error("-",x));process.exit(1)}
-console.log("CHAT MASTER + M1/M2/M3 + serial leader strict invariants: OK");
+console.log("CHAT MASTER + M1/M2/M3 + serial leader + ALL-LINKS strict invariants: OK");
