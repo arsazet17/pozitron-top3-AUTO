@@ -12,35 +12,72 @@ function chronological(records=[]){
     .filter(r=>Number.isInteger(r.id)&&/^\d{3}$/.test(r.code))
     .sort((a,b)=>a.id-b.id);
 }
-function complementFamily(source,triple){
+function complementCode(source,triple){
   const target=Number(triple[0]),s=padCode(source);
-  return family(s.split("").map(x=>String((target-Number(x)+10)%10)).join(""));
+  return s.split("").map(x=>String((target-Number(x)+10)%10)).join("");
 }
 
 export function computeAllLinksForRows(rows=[]){
-  const real=chronological(rows),counts=Object.fromEntries(TRIPLES.map(t=>[t,0]));
+  const real=chronological(rows);
   const sourceFamilies=Object.fromEntries(TRIPLES.map(t=>[t,new Map()]));
+  const links=[];
+  const facts=[];
+  const running=Object.fromEntries(TRIPLES.map(t=>[t,0]));
 
-  for(const row of real){
-    const ff=family(row.code);
-    for(const t of TRIPLES)counts[t]+=sourceFamilies[t].get(ff)||0;
+  real.forEach((row,rowIndex)=>{
+    const ff=family(row.code),newLinks=[];
+
     for(const t of TRIPLES){
-      const f=complementFamily(row.code,t),m=sourceFamilies[t];
-      m.set(f,(m.get(f)||0)+1);
+      const matches=sourceFamilies[t].get(ff)||[];
+      for(const src of matches){
+        const link={
+          triple:t,
+          sourceId:src.id,sourceDate:src.date,sourceTime:src.time,sourceCode:src.code,
+          recipientId:row.id,recipientDate:row.date,recipientTime:row.time,recipientCode:row.code,
+          addedCode:src.addedCode,addedFamily:src.addedFamily,
+          lag:rowIndex-src.index
+        };
+        links.push(link);newLinks.push(link);running[t]++;
+      }
     }
-  }
 
-  const sorted=TRIPLES.map((triple,order)=>({triple,count:counts[triple],order}))
-    .sort((a,b)=>b.count-a.count||a.order-b.order);
-  const multiplicity=new Map();
-  for(const x of sorted)multiplicity.set(x.count,(multiplicity.get(x.count)||0)+1);
-  let last=null,rank=0;
-  const ranking=sorted.map((x,i)=>{
-    if(x.count!==last){rank=i+1;last=x.count}
-    return {triple:x.triple,count:x.count,rank,tied:(multiplicity.get(x.count)||0)>1};
+    for(const t of TRIPLES){
+      const addedCode=complementCode(row.code,t),addedFamily=family(addedCode),m=sourceFamilies[t];
+      if(!m.has(addedFamily))m.set(addedFamily,[]);
+      m.get(addedFamily).push({id:row.id,date:row.date,time:row.time,code:row.code,index:rowIndex,addedCode,addedFamily});
+    }
+
+    const byTriple={};for(const l of newLinks)byTriple[l.triple]=(byTriple[l.triple]||0)+1;
+    const max=Math.max(...Object.values(running));
+    facts.push({
+      id:row.id,date:row.date,time:row.time,code:row.code,
+      added:newLinks.length,byTriple,cumulative:links.length,
+      leaders:max>0?TRIPLES.filter(t=>running[t]===max):[],leaderCount:max
+    });
   });
 
-  return {rows:real.length,counts,ranking,total:Object.values(counts).reduce((a,b)=>a+b,0)};
+  const total=links.length;
+  const stats=TRIPLES.map((triple,order)=>{
+    const own=links.filter(x=>x.triple===triple),count=own.length;
+    const sourceCount=new Set(own.map(x=>x.sourceId)).size;
+    const recipientCount=new Set(own.map(x=>x.recipientId)).size;
+    const avgLag=count?own.reduce((a,b)=>a+b.lag,0)/count:null;
+    const maxLag=count?Math.max(...own.map(x=>x.lag)):null;
+    return {
+      triple,order,count,share:total?count*100/total:0,sourceCount,recipientCount,avgLag,maxLag,
+      firstLink:own[0]||null,lastLink:own.at(-1)||null
+    };
+  });
+  const counts=Object.fromEntries(stats.map(x=>[x.triple,x.count]));
+  const sorted=[...stats].sort((a,b)=>b.count-a.count||a.order-b.order);
+  const multiplicity=new Map();for(const x of sorted)multiplicity.set(x.count,(multiplicity.get(x.count)||0)+1);
+  let last=null,rank=0;
+  const ranking=sorted.map(x=>{
+    if(x.count!==last){rank++;last=x.count}
+    return {...x,rank,tied:(multiplicity.get(x.count)||0)>1};
+  });
+
+  return {rows:real.length,counts,ranking,total,links,facts};
 }
 
 export function computeTripleAllLinks(records=[]){
@@ -58,6 +95,8 @@ export function computeTripleAllLinks(records=[]){
     cycleRows:calc.rows,
     total:calc.total,
     counts:calc.counts,
-    ranking:calc.ranking
+    ranking:calc.ranking,
+    links:calc.links,
+    facts:calc.facts
   };
 }
