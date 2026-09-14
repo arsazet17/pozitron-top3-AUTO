@@ -1,5 +1,6 @@
 import {card,esc} from "../ui.js";
 import {computeTripleChat,TRIPLE_CHAT_RULE_CODE,SERIAL_LEADER_TTL} from "../engine/triples-chat.js";
+import {computeTripleAllLinks,ALL_LINKS_RULE_CODE} from "../engine/triple-all-links.js";
 
 function isRepeated(c){return /^([0-9])\1\1$/.test(String(c||""))}
 function fmtList(a){return a&&a.length?a.join(" / "):"—"}
@@ -24,9 +25,15 @@ function archiveHtml(snapshot){
  const births=new Map((snapshot.birthsWindow||[]).map(x=>[Number(x.id),x]));
  return `<div class="table-wrap"><table><thead><tr><th>№</th><th>Дата / время</th><th>Факт</th><th>Frozen ДО</th><th>Проверка</th><th>Frozen после</th><th>Новые рождения</th><th>Сложение NEW</th><th>Лидер 5</th></tr></thead><tbody>${(snapshot.archive||[]).map(r=>{const b=births.get(Number(r.id))||{};return `<tr><td>№${esc(r.id)}</td><td>${esc(r.date)}<br><b>${esc(r.time)}</b></td><td><b>${esc(r.fact)}</b></td><td>${esc(r.before)}</td><td>${r.check.includes("✅")?"✅ ":r.check.includes("❌")?"❌ ":""}${esc(r.check.replace(/^✅\s*|^❌\s*/,""))}</td><td><b>${esc(r.after)}</b></td><td>${esc(fmtList(b.births||[]))}</td><td>${esc(fmtList(b.additionBirths||[]))}</td><td>${esc(r.serial||"—")}</td></tr>`}).join("")}</tbody></table></div>`;
 }
+function allLinksHtml(x){
+ const anchor=x.anchor?`${x.anchor.code} · ${x.anchor.date} ${x.anchor.time}`:"—";
+ const start=x.start?`${x.start.date} ${x.start.time}`:"—";
+ const rows=(x.ranking||[]).map(r=>`<tr><td><b>${esc(String(r.rank)+(r.tied?"=":""))}</b></td><td><b>${r.rank===1?"🏆 ":""}${esc(r.triple)}</b></td><td><b>${esc(r.count)}</b></td></tr>`).join("");
+ return `<div class="table-wrap"><table><thead><tr><th>Место</th><th>Тройня</th><th>Все связи</th></tr></thead><tbody>${rows}</tbody></table></div><p class="muted"><b>Опорная тройня:</b> ${esc(anchor)} · <b>старт цикла:</b> ${esc(start)} · <b>тиражей в текущем цикле:</b> ${esc(x.cycleRows)} · <b>всего связей:</b> ${esc(x.total)}</p><p class="muted">Считаются ВСЕ связи: каждый новый факт проверяется против всех ранее рассчитанных семей текущего цикла. Несколько совпадений одного факта не схлопываются. При равенстве количества связей место одинаковое. Новый цикл начинается со следующего тиража после новой фактической тройни. Код: ${esc(ALL_LINKS_RULE_CODE)}.</p>`;
+}
 
 export function renderTriples(ctx){
- const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot;
+ const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records);
  if(!s)return card("🔮 ТРОЙНИ · M1 / M2 / M3","<p>Недостаточно фактических данных для расчёта.</p>");
  const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader;
  const leader=L.leaders.length?`${L.leaders.join(" / ")} ×${L.max}`:"—";
@@ -52,10 +59,11 @@ export function renderTriples(ctx){
  ${card("M3 · МЕТОД 3",`<div class="kpi" style="font-size:22px">${esc(m3)}</div><div class="muted">15 предыдущих · все перестановки · 1/2 NEW → 2/2 LAST</div>`)}
  </div>
  ${card("📜 АРХИВ ПРОГНОЗОВ ЗА ПОСЛЕДНИЕ 20 ТИРАЖЕЙ",`${archiveHtml(s)}<p class="muted">Факт → Frozen ДО → проверка → Frozen после. «Сложение NEW» отдельно показывает рождения, которые допускаются к правилу серийного лидера. Старые frozen до включения нового правила не переписываются.</p>`)}
+ ${card("🏆 ТАБЛИЦА ЛИДЕРОВ ОТ ТРОЙНИ · ВСЕ СВЯЗИ",allLinksHtml(allLinks))}
  ${card("📊 ЛИДЕР ПО ЧАСТОТЕ · БЕЗ ДУБЛЯЖЕЙ · ПОСЛЕДНИЕ 20",`${frequencyHtml(s.frequency,L.leaders)}<p class="muted">Считаются только новые рождения. Продление 1/2 → 2/2 второй раз не считается; M1+M3 из одного source = одно рождение; открытое окно M2 не считается; package→000 = одно рождение 000. Та же тройня может считаться снова только как новое рождение после закрытия старого сигнала.</p>`)}
  ${card("🧩 ПАКЕТ ПОДРЯД → 000",`<p><b>${esc(pkg)}</b></p><p class="muted">Если подряд идущие исходные комбинации дают разные XXX-тройки, отдельные XXX заменяются итоговым 000 с фиксацией участвовавших исходников. Синтетический package→000 не запускает правило серийного лидера.</p>`)}
- ${card("🔎 КОНТРОЛЬ ПРАВИЛ",`<div class="table-wrap"><table><tbody><tr><th>Серийный лидер</th><td>${esc(serialEvents)}</td></tr><tr><th>Exact BLOCK</th><td>${esc(blocks)}</td></tr><tr><th>M2 события</th><td>${esc(m2events)}</td></tr><tr><th>Зависимость M1/M3</th><td>${esc(deps)}</td></tr><tr><th>Mirror gate</th><td>${esc(s.diag.mirror||"—")} · ${s.diag.mirrorPass?"PASS":"не подтверждён"}${Number.isFinite(s.diag.mirrorHits)?` · exact ${esc(s.diag.mirrorHits)}`:""}</td></tr><tr><th>Версия правил</th><td>${esc(TRIPLE_CHAT_RULE_CODE)}</td></tr></tbody></table></div>`)}
+ ${card("🔎 КОНТРОЛЬ ПРАВИЛ",`<div class="table-wrap"><table><tbody><tr><th>Лидеры от тройни</th><td>${esc(ALL_LINKS_RULE_CODE)}</td></tr><tr><th>Серийный лидер</th><td>${esc(serialEvents)}</td></tr><tr><th>Exact BLOCK</th><td>${esc(blocks)}</td></tr><tr><th>M2 события</th><td>${esc(m2events)}</td></tr><tr><th>Зависимость M1/M3</th><td>${esc(deps)}</td></tr><tr><th>Mirror gate</th><td>${esc(s.diag.mirror||"—")} · ${s.diag.mirrorPass?"PASS":"не подтверждён"}${Number.isFinite(s.diag.mirrorHits)?` · exact ${esc(s.diag.mirrorHits)}`:""}</td></tr><tr><th>Версия правил M1/M2/M3</th><td>${esc(TRIPLE_CHAT_RULE_CODE)}</td></tr></tbody></table></div>`)}
  ${card("000–999 · ФАКТИЧЕСКАЯ СТАТИСТИКА ПОЛНОГО АРХИВА",`<div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Сколько раз</th><th>Последний тираж</th><th>Тиражей назад</th></tr></thead><tbody>${stats.map(x=>`<tr><td><b>${x.triple}</b></td><td>${x.count}</td><td>${x.lastDraw==null?"—":"№"+x.lastDraw}</td><td>${x.gap==null?"—":x.gap}</td></tr>`).join("")}</tbody></table></div>`)}
  ${card("ПОСЛЕДНИЕ ФАКТИЧЕСКИЕ ТРОЙНИ",`<div class="table-wrap"><table><thead><tr><th>Тираж</th><th>Тройня</th><th>Тиражей назад</th></tr></thead><tbody>${facts.map(x=>`<tr><td>№${x.draw}</td><td><b>${x.combo}</b></td><td>${x.gap}</td></tr>`).join("")||'<tr><td colspan="3">Данных пока нет.</td></tr>'}</tbody></table></div>`)}
- ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер и их итоговый Frozen не получают MASTER score и не меняют основной прогноз TOP-3.</p>`)}`;
+ ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер, таблица лидеров от тройни и их расчёты не получают MASTER score и не меняют основной прогноз TOP-3.</p>`)}`;
 }
