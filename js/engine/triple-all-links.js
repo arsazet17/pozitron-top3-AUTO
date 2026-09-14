@@ -8,7 +8,11 @@ function family(v){return padCode(v).split("").sort().join("")}
 function isTriple(v){return /^([0-9])\1\1$/.test(String(v||""))}
 function chronological(records=[]){
   return records
-    .map(r=>({id:Number(r.draw),date:String(r.date||""),time:String(r.time||""),code:padCode(r.combo??`${r.A}${r.B}${r.C}`)}))
+    .map(r=>{
+      const rawId=r?.id??r?.draw;
+      const rawCode=r?.code??r?.combo??((r?.A!=null&&r?.B!=null&&r?.C!=null)?`${r.A}${r.B}${r.C}`:null);
+      return {id:Number(rawId),date:String(r?.date||""),time:String(r?.time||""),code:rawCode==null?"":padCode(rawCode)};
+    })
     .filter(r=>Number.isInteger(r.id)&&/^\d{3}$/.test(r.code))
     .sort((a,b)=>a.id-b.id);
 }
