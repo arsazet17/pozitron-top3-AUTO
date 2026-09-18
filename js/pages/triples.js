@@ -1,6 +1,7 @@
 import {card,esc} from "../ui.js";
 import {computeTripleChat,TRIPLE_CHAT_RULE_CODE,SERIAL_LEADER_TTL} from "../engine/triples-chat.js";
 import {computeTripleAllLinks,ALL_LINKS_RULE_CODE} from "../engine/triple-all-links.js";
+import {computeTripleBeacon,TRIPLE_BEACON_RULE_CODE} from "../engine/triple-beacon.js";
 
 function isRepeated(c){return /^([0-9])\1\1$/.test(String(c||""))}
 function fmtList(a){return a&&a.length?a.join(" / "):"—"}
@@ -33,7 +34,7 @@ function allLinksHtml(x){
 }
 
 export function renderTriples(ctx){
- const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records);
+ const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive);
  if(!s)return card("🔮 ТРОЙНИ · M1 / M2 / M3","<p>Недостаточно фактических данных для расчёта.</p>");
  const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader;
  const leader=L.leaders.length?`${L.leaders.join(" / ")} ×${L.max}`:"—";
@@ -47,11 +48,15 @@ export function renderTriples(ctx){
  const blocks=s.diag.blocks?.length?s.diag.blocks.join(" · "):"нет";
  const m2events=s.diag.m2Events?.length?s.diag.m2Events.join(" · "):"нет новых событий";
  const serialEvents=s.diag.serialEvents?.length?s.diag.serialEvents.join(" · "):"нет нового серийного события";
+ const beaconPair=beacon.nearest?`${beacon.nearest.source}+${beacon.nearest.second}→${beacon.nearest.type}`:"—";
+ const beaconPattern=beacon.nearest?`${beacon.nearest.type} · дистанция ${beacon.nearest.distance}`:"—";
+ const beaconActive=beacon.activePatterns?.length?beacon.activePatterns.slice().sort((a,b)=>a.distance-b.distance||a.type.localeCompare(b.type)).map(x=>`${x.type}@${x.distance}`).join(" · "):"нет";
  return `<div class="grid cols-3">
  ${card("🔮 ИТОГОВЫЙ FROZEN · 3 МЕТОДА + ЛИДЕР",`<div class="kpi" style="font-size:24px">${esc(fmtList(s.frozen))}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")}</div>`)}
  ${card("🏆 ЛИДЕР ПОЯВЛЕНИЯ · 20",`<div class="kpi" style="font-size:24px">${esc(leader)}</div><div class="muted">только новые рождения, без carry / продления / дублей</div>`)}
  ${card("📚 ПОЛНЫЙ АРХИВ",`<div class="kpi">${esc(ctx.fullArchive?.total||ctx.records.length)}</div><div class="muted">№${esc(ctx.fullArchive?.fromDraw||"—")}…№${esc(ctx.fullArchive?.toDraw||"—")}</div>`)}
  </div>
+ ${card("🔦 МАЯЧОК · ОТДЕЛЬНЫЙ ПРОГНОЗ",`<div class="kpi" style="font-size:26px">${esc(beacon.status)}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")} · не входит в итоговый Frozen</div><div class="table-wrap" style="margin-top:10px"><table><tbody><tr><th>Ближайшее разрешённое схлопывание</th><td><b>${esc(beaconPair)}</b></td></tr><tr><th>Тип × дистанция</th><td><b>${esc(beaconPattern)}</b></td></tr><tr><th>Активные type@distance ≤20</th><td>${esc(beaconActive)}</td></tr><tr><th>NO-REUSE пар в окне 50</th><td>${esc(beacon.pairs?.length||0)}</td></tr><tr><th>Frozen V2 шаблонов</th><td>${esc(beacon.frozenPatternCount||0)}</td></tr></tbody></table></div><p class="muted"><b>${esc(beacon.reason)}</b></p><p class="muted">Тип 000…999 здесь означает тип точного поразрядного схлопывания, а не прогноз конкретной тройни. Каждая строка архива может участвовать максимум в одной паре; порядок source→second строгий, семьи и перестановки запрещены. Код: ${esc(TRIPLE_BEACON_RULE_CODE)}.</p>`)}
  ${card("🔥 СЕРИЙНЫЙ ЛИДЕР · 5 ТИРАЖЕЙ",`<div class="kpi" style="font-size:24px">${esc(serial)}</div><p class="muted">Новое правило: если одна и та же XXX-тройня рождается именно СЛОЖЕНИЕМ в двух тиражах подряд или более, она становится лидером и автоматически идёт в итоговом Frozen ещё ${SERIAL_LEADER_TTL} тиражей вместе с другими тройнями. Carry 1/2→2/2, M2 READY, дубль одного рождения и пакет→000 серией не считаются. Если серия продолжается, срок лидера снова становится rem${SERIAL_LEADER_TTL}.</p>`)}
  <div class="grid cols-3" style="margin-top:12px">
  ${card("M1 · МЕТОД 1",`<div class="kpi" style="font-size:24px">${esc(m1)}</div><div class="muted">1 следующий тираж · база живёт 15 фактов после exact mirror/history gate</div>`)}
@@ -62,8 +67,8 @@ export function renderTriples(ctx){
  ${card("🏆 ТАБЛИЦА ЛИДЕРОВ ОТ ТРОЙНИ · ВСЕ СВЯЗИ",allLinksHtml(allLinks))}
  ${card("📊 ЛИДЕР ПО ЧАСТОТЕ · БЕЗ ДУБЛЯЖЕЙ · ПОСЛЕДНИЕ 20",`${frequencyHtml(s.frequency,L.leaders)}<p class="muted">Считаются только новые рождения. Продление 1/2 → 2/2 второй раз не считается; M1+M3 из одного source = одно рождение; открытое окно M2 не считается; package→000 = одно рождение 000. Та же тройня может считаться снова только как новое рождение после закрытия старого сигнала.</p>`)}
  ${card("🧩 ПАКЕТ ПОДРЯД → 000",`<p><b>${esc(pkg)}</b></p><p class="muted">Если подряд идущие исходные комбинации дают разные XXX-тройки, отдельные XXX заменяются итоговым 000 с фиксацией участвовавших исходников. Синтетический package→000 не запускает правило серийного лидера.</p>`)}
- ${card("🔎 КОНТРОЛЬ ПРАВИЛ",`<div class="table-wrap"><table><tbody><tr><th>Лидеры от тройни</th><td>${esc(ALL_LINKS_RULE_CODE)}</td></tr><tr><th>Серийный лидер</th><td>${esc(serialEvents)}</td></tr><tr><th>Exact BLOCK</th><td>${esc(blocks)}</td></tr><tr><th>M2 события</th><td>${esc(m2events)}</td></tr><tr><th>Зависимость M1/M3</th><td>${esc(deps)}</td></tr><tr><th>Mirror gate</th><td>${esc(s.diag.mirror||"—")} · ${s.diag.mirrorPass?"PASS":"не подтверждён"}${Number.isFinite(s.diag.mirrorHits)?` · exact ${esc(s.diag.mirrorHits)}`:""}</td></tr><tr><th>Версия правил M1/M2/M3</th><td>${esc(TRIPLE_CHAT_RULE_CODE)}</td></tr></tbody></table></div>`)}
+ ${card("🔎 КОНТРОЛЬ ПРАВИЛ",`<div class="table-wrap"><table><tbody><tr><th>МАЯЧОК</th><td>${esc(TRIPLE_BEACON_RULE_CODE)} · ${beacon.signal?"SIGNAL":"NO SIGNAL"}</td></tr><tr><th>Лидеры от тройни</th><td>${esc(ALL_LINKS_RULE_CODE)}</td></tr><tr><th>Серийный лидер</th><td>${esc(serialEvents)}</td></tr><tr><th>Exact BLOCK</th><td>${esc(blocks)}</td></tr><tr><th>M2 события</th><td>${esc(m2events)}</td></tr><tr><th>Зависимость M1/M3</th><td>${esc(deps)}</td></tr><tr><th>Mirror gate</th><td>${esc(s.diag.mirror||"—")} · ${s.diag.mirrorPass?"PASS":"не подтверждён"}${Number.isFinite(s.diag.mirrorHits)?` · exact ${esc(s.diag.mirrorHits)}`:""}</td></tr><tr><th>Версия правил M1/M2/M3</th><td>${esc(TRIPLE_CHAT_RULE_CODE)}</td></tr></tbody></table></div>`)}
  ${card("000–999 · ФАКТИЧЕСКАЯ СТАТИСТИКА ПОЛНОГО АРХИВА",`<div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Сколько раз</th><th>Последний тираж</th><th>Тиражей назад</th></tr></thead><tbody>${stats.map(x=>`<tr><td><b>${x.triple}</b></td><td>${x.count}</td><td>${x.lastDraw==null?"—":"№"+x.lastDraw}</td><td>${x.gap==null?"—":x.gap}</td></tr>`).join("")}</tbody></table></div>`)}
  ${card("ПОСЛЕДНИЕ ФАКТИЧЕСКИЕ ТРОЙНИ",`<div class="table-wrap"><table><thead><tr><th>Тираж</th><th>Тройня</th><th>Тиражей назад</th></tr></thead><tbody>${facts.map(x=>`<tr><td>№${x.draw}</td><td><b>${x.combo}</b></td><td>${x.gap}</td></tr>`).join("")||'<tr><td colspan="3">Данных пока нет.</td></tr>'}</tbody></table></div>`)}
- ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер, таблица лидеров от тройни и их расчёты не получают MASTER score и не меняют основной прогноз TOP-3.</p>`)}`;
+ ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер, МАЯЧОК, таблица лидеров от тройни и их расчёты не получают MASTER score и не меняют основной прогноз TOP-3.</p>`)}`;
 }
