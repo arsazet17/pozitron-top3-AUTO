@@ -1,5 +1,5 @@
-const CACHE="top3-auto-v138-beacon-strict-v2";
-const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/engine/triples-chat.js","./js/engine/triple-all-links.js","./js/engine/triple-beacon.js","./js/pages/home.js","./js/pages/archive.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
+const CACHE="top3-auto-v139-m6-repeat-family-v2";
+const STATIC=["./","./index.html","./styles.css","./top3-upgrade.css","./js/app.js","./js/storage.js","./js/engine/chat-master.js","./js/engine/mirror15.js","./js/engine/triples-chat.js","./js/engine/triple-all-links.js","./js/engine/triple-beacon.js","./js/engine/m6-repeat-family.js","./js/pages/home.js","./js/pages/archive.js","./js/pages/mirror.js","./js/pages/triples.js","./assets/icon.png","./manifest.webmanifest"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).catch(()=>{}))});
 self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})())});
 async function networkFirst(req){try{const r=await fetch(req,{cache:"no-store"});if(r&&r.ok){const c=await caches.open(CACHE);c.put(req,r.clone()).catch(()=>{})}return r}catch{return (await caches.match(req))||Response.error()}}

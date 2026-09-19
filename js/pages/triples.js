@@ -2,6 +2,7 @@ import {card,esc} from "../ui.js";
 import {computeTripleChat,TRIPLE_CHAT_RULE_CODE,SERIAL_LEADER_TTL} from "../engine/triples-chat.js";
 import {computeTripleAllLinks,ALL_LINKS_RULE_CODE} from "../engine/triple-all-links.js";
 import {computeTripleBeacon,TRIPLE_BEACON_RULE_CODE} from "../engine/triple-beacon.js";
+import {computeM6RepeatFamily,collectM5ExactOccupied,M6_RULE_CODE} from "../engine/m6-repeat-family.js";
 
 function isRepeated(c){return /^([0-9])\1\1$/.test(String(c||""))}
 function fmtList(a){return a&&a.length?a.join(" / "):"—"}
@@ -34,7 +35,7 @@ function allLinksHtml(x){
 }
 
 export function renderTriples(ctx){
- const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive);
+ const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive),m6=computeM6RepeatFamily(ctx.records,{exactOccupiedDraws:collectM5ExactOccupied(ctx)});
  if(!s)return card("🔮 ТРОЙНИ · M1 / M2 / M3","<p>Недостаточно фактических данных для расчёта.</p>");
  const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader;
  const leader=L.leaders.length?`${L.leaders.join(" / ")} ×${L.max}`:"—";
@@ -42,6 +43,12 @@ export function renderTriples(ctx){
  const m1=fmtList(s.m1);
  const m2=s.m2.length?s.m2.map(stageLabel).join(" · "):"—";
  const m3=s.m3.length?s.m3.map(x=>`${stageLabel(x)} · ${x.sourceCode}+${x.bornCode||""}`).join(" · "):"—";
+ const m6Frozen=m6.current?.triples||[];
+ const combinedFrozen=[...new Set([...(s.frozen||[]),...m6Frozen])].sort((a,b)=>Number(a[0])-Number(b[0]));
+ const m6Signal=m6Frozen.length?m6Frozen.join(" / "):"— НЕТ СИГНАЛА";
+ const m6Paths=m6.current?.details?.length?m6.current.details.map(x=>`family${x.activeFamily} + family${x.currentFamily} → ${x.triple}`).join(" · "):"XXX-схлопываний нет";
+ const m6Active=m6.current?.active?.length?m6.current.active.map(x=>`family${x.family}→№${x.activeUntil}`).join(" · "):"активных repeat-family нет";
+ const m6History=(m6.history||[]).slice(-6).reverse().map(x=>`<tr><td>№${x.targetId}</td><td>№${x.sourceId} · ${esc(x.sourceCode)}</td><td><b>${esc(x.triples?.length?x.triples.join(" / "):"—")}</b></td><td>${x.targetFact?`${esc(x.targetFact.code)} · ${esc(x.check)}`:"ожидает факт"}</td></tr>`).join("");
  const windows=s.windows.length?s.windows.map(w=>`${w.triple}: ждём family ${w.waitFamily||w.waitSig} · rem${w.rem}`).join(" · "):"Открытых окон нет";
  const pkg=s.diag.packages?.length?s.diag.packages.join(" · "):"не сформирован";
  const deps=s.diag.dependency?.length?s.diag.dependency.join(" · "):"нет новых зависимых подтверждений";
@@ -53,11 +60,12 @@ export function renderTriples(ctx){
  const beaconMatches=beacon.matched?.length?beacon.matched.map(x=>`${x.type} · дистанция ${x.distance} · ${x.source}+${x.second}→${x.type}`).join(" / "):"—";
  const beaconActive=beacon.activePatterns?.length?beacon.activePatterns.slice().sort((a,b)=>a.distance-b.distance||a.type.localeCompare(b.type)).map(x=>`${x.type}@${x.distance}`).join(" · "):"нет";
  return `<div class="grid cols-3">
- ${card("🔮 ИТОГОВЫЙ FROZEN · 3 МЕТОДА + ЛИДЕР",`<div class="kpi" style="font-size:24px">${esc(fmtList(s.frozen))}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")}</div>`)}
+ ${card("🔮 ИТОГОВЫЙ FROZEN · 3 МЕТОДА + ЛИДЕР",`<div class="kpi" style="font-size:24px">${esc(fmtList(combinedFrozen))}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")} · M6 включён one-shot</div>`)}
  ${card("🏆 ЛИДЕР ПОЯВЛЕНИЯ · 20",`<div class="kpi" style="font-size:24px">${esc(leader)}</div><div class="muted">только новые рождения, без carry / продления / дублей</div>`)}
  ${card("📚 ПОЛНЫЙ АРХИВ",`<div class="kpi">${esc(ctx.fullArchive?.total||ctx.records.length)}</div><div class="muted">№${esc(ctx.fullArchive?.fromDraw||"—")}…№${esc(ctx.fullArchive?.toDraw||"—")}</div>`)}
  </div>
  ${card("🔦 МАЯЧОК · ОТДЕЛЬНЫЙ ПРОГНОЗ",`<div class="kpi" style="font-size:26px">${esc(beacon.status)}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")} · не входит в итоговый Frozen</div><div class="table-wrap" style="margin-top:10px"><table><tbody><tr><th>Сработавший frozen-шаблон</th><td><b>${esc(beaconMatches)}</b></td></tr><tr><th>Ближайшее разрешённое схлопывание</th><td><b>${esc(beaconPair)}</b></td></tr><tr><th>Тип × дистанция ближайшего</th><td><b>${esc(beaconPattern)}</b></td></tr><tr><th>Активные type@distance ≤20</th><td>${esc(beaconActive)}</td></tr><tr><th>NO-REUSE пар в окне 50</th><td>${esc(beacon.pairs?.length||0)}</td></tr><tr><th>Frozen V2 шаблонов</th><td>${esc(beacon.frozenPatternCount||0)}</td></tr></tbody></table></div><p class="muted"><b>${esc(beacon.reason)}</b></p><p class="muted">Тип 000…999 здесь означает тип точного поразрядного схлопывания, а не прогноз конкретной тройни. Каждая строка архива может участвовать максимум в одной паре; порядок source→second строгий, семьи и перестановки запрещены. Код: ${esc(TRIPLE_BEACON_RULE_CODE)}.</p>`)}
+ ${card("🧬 M6 · REPEAT-FAMILY-150 V2",`<div class="kpi" style="font-size:26px">${esc(m6Signal)}</div><div class="muted">target №${esc(m6.current?.targetId||"—")} · source №${esc(m6.current?.sourceId||"—")} ${esc(m6.current?.sourceCode||"—")} · new family${esc(m6.current?.currentFamily||"—")}</div><p><b>${esc(m6Paths)}</b></p><p class="muted">ACTIVE: ${esc(m6Active)} · M5 exact-occupied: ${esc(m6.occupied?.length||0)}</p><div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE со следующего тиража на 150 тиражей. Каждый новый факт: каждая ACTIVE repeat-family + family новой комбинации; все уникальные перестановки, mod10, сохраняются только XXX. ACTIVE family между собой не складываются. M5 EXCLUSIVE EXACT имеет приоритет. One-shot только на следующий тираж. Код: ${esc(M6_RULE_CODE)}.</p>`)}
  ${card("🔥 СЕРИЙНЫЙ ЛИДЕР · 5 ТИРАЖЕЙ",`<div class="kpi" style="font-size:24px">${esc(serial)}</div><p class="muted">Новое правило: если одна и та же XXX-тройня рождается именно СЛОЖЕНИЕМ в двух тиражах подряд или более, она становится лидером и автоматически идёт в итоговом Frozen ещё ${SERIAL_LEADER_TTL} тиражей вместе с другими тройнями. Carry 1/2→2/2, M2 READY, дубль одного рождения и пакет→000 серией не считаются. Если серия продолжается, срок лидера снова становится rem${SERIAL_LEADER_TTL}.</p>`)}
  <div class="grid cols-3" style="margin-top:12px">
  ${card("M1 · МЕТОД 1",`<div class="kpi" style="font-size:24px">${esc(m1)}</div><div class="muted">1 следующий тираж · база живёт 15 фактов после exact mirror/history gate</div>`)}
