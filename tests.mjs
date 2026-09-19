@@ -7,6 +7,10 @@ import {
   SERIAL_LEADER_RULE_START_ID,SERIAL_LEADER_TTL,advanceSerialLeaders
 } from "./js/engine/triples-chat.js";
 import {ALL_LINKS_RULE_CODE,computeAllLinksForRows,computeTripleAllLinks} from "./js/engine/triple-all-links.js";
+import {
+  M6_RULE_CODE,M6_RULE_START_FACT,M6_FORWARD_TARGET,M6_TTL,
+  familyOf,familyTripleResults,computeM5ExactState,computeM6RepeatFamily
+} from "./js/engine/m6-repeat-family.js";
 
 const records=JSON.parse(fs.readFileSync("./data/archive.json","utf8"));
 const rules=JSON.parse(fs.readFileSync("./data/rules.json","utf8"));
@@ -73,6 +77,27 @@ if(currentAllLinks.total>0){const shareSum=currentAllLinks.ranking.reduce((a,b)=
 ok(currentAllLinks.links?.length===currentAllLinks.total,"current all-links must expose full journal");
 ok(currentAllLinks.facts?.length===currentAllLinks.cycleRows,"current all-links must expose per-fact statistics");
 
+ok(M6_RULE_CODE==="TOP3-M6-REPEAT-FAMILY-150-V2-19.09.2026","M6 V2 rule code");
+ok(M6_RULE_START_FACT===268289&&M6_FORWARD_TARGET===268290,"M6 forward must start from frozen №268290 after fact №268289");
+ok(M6_TTL===150,"M6 repeat-family TTL must be exactly 150 future draws");
+ok(familyOf("173")==="137"&&familyOf("713")==="137"&&familyOf("137")==="137","M6 family must ignore digit order");
+ok(familyTripleResults("137","137").has("444"),"M6 retro control family137 + family137 must produce 444");
+ok(familyTripleResults("666","444").has("000"),"M6 control family666 + family444 must produce 000");
+const preM6Records=records.filter(r=>Number(r.draw)<=268289);
+const m5At268289=computeM5ExactState(preM6Records);
+const m5Keys=new Set((m5At268289.links||[]).map(x=>`${x.sourceCode}+${x.secondCode}→${x.triple}`));
+ok(m5Keys.has("794+194→888"),"M5 control exact 794+194→888 before №268290");
+ok(m5Keys.has("084+137→111"),"M5 control exact 084+137→111 before №268290");
+for(const id of [268261,268270,268287,268288])ok((m5At268289.occupied||[]).includes(id),`M5 EXCLUSIVE occupied must include №${id}`);
+ok(!(m5At268289.occupied||[]).includes(268289),"current fact №268289=444 must not be exact-occupied for M6 №268290");
+const m6At268289=computeM6RepeatFamily(preM6Records);
+ok(m6At268289.current?.sourceId===268289&&m6At268289.current?.targetId===268290,"M6 control must issue after №268289 for №268290");
+ok((m6At268289.current?.triples||[]).join("/")==="000","M6 frozen №268290 must be exactly 000");
+const active666=(m6At268289.current?.active||[]).find(x=>x.family==="666");
+ok(active666?.activeUntil===268320,"active family666 must stay live through №268320");
+ok(m6At268289.current?.currentBlocked===false,"fact444 must pass M5 EXCLUSIVE for M6 №268290");
+ok((m6At268289.history||[]).every(x=>x.targetId>=268290),"M6 history must not retroactively create forecasts before №268290");
+
 const seedRecords=records.filter(r=>Number(r.draw)<=TRIPLE_CHAT_SEED_ID);
 const seedTriple=computeTripleChat(seedRecords,fullArchive);
 ok(seedTriple.snapshot?.frozen?.join("/")==="777","seed frozen after №267958 must be 777");
@@ -89,8 +114,10 @@ ok((triple.snapshot?.m3||[]).every(x=>x.stage===1||x.stage===2),"M3 lives only 1
 ok(Array.isArray(triple.snapshot?.serialLeaders),"serial leaders must be exposed in snapshot");
 ok((triple.snapshot?.birthsWindow||[]).every(x=>Array.isArray(x.additionBirths)),"birth audit must expose addition-only births");
 
+const m6=computeM6RepeatFamily(records);
 console.log("CHAT MASTER target",target,"MASTER",f.master?.combos,"families",f.master?.families);
 console.log("TRIPLES",triple.snapshot?.frozen,"leader",triple.snapshot?.leader?.leaders,"×",triple.snapshot?.leader?.max,"serial",triple.snapshot?.serialLeaders);
+console.log("M6",m6.current?.sourceId,"→",m6.current?.targetId,m6.current?.triples,"active",m6.current?.active?.map(x=>`${x.family}@${x.activeUntil}`));
 console.log("ALL-LINKS",currentAllLinks.anchor?.code,"start",currentAllLinks.start?.date,currentAllLinks.start?.time,"ranking",currentAllLinks.ranking?.map(x=>`${x.rank}:${x.triple}=${x.count} ${x.share.toFixed(1)}% src${x.sourceCount} dst${x.recipientCount} avg${x.avgLag==null?"—":x.avgLag.toFixed(2)} max${x.maxLag??"—"}`).join(" | "));
 if(fail.length){console.error("STRICT CONTROL FAILED");fail.forEach(x=>console.error("-",x));process.exit(1)}
-console.log("CHAT MASTER + M1/M2/M3 + serial leader + ALL-LINKS strict invariants: OK");
+console.log("CHAT MASTER + M1/M2/M3 + serial leader + M4 + M6 V2 strict invariants: OK");
