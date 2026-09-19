@@ -15,7 +15,8 @@ function occupiedSet(v){const s=new Set();for(const x of v||[]){const n=Number(t
 export function familyTripleResults(a,b){const out=new Map();for(const pa of perms(a))for(const pb of perms(b)){const x=add(pa,pb);if(!isTriple(x))continue;if(!out.has(x))out.set(x,[]);const arr=out.get(x);if(arr.length<12)arr.push(`${pa}+${pb}→${x}`)}return out}
 
 export function computeM5ExactState(records=[],uptoId=null){
- let real=normalize(records);if(Number.isInteger(Number(uptoId)))real=real.filter(r=>r.id<=Number(uptoId));
+ let real=normalize(records);
+ if(uptoId!==null&&uptoId!==undefined&&Number.isInteger(Number(uptoId)))real=real.filter(r=>r.id<=Number(uptoId));
  if(!real.length)return{links:[],occupied:[],counts:{},previous5:[],burst:false,main:false,reserve:false};
  const window=real.slice(-M5_WINDOW),seconds=window.slice(-M5_LAST),secondIds=new Set(seconds.map(x=>x.id)),links=[];
  for(let j=0;j<window.length;j++){
