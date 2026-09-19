@@ -6,7 +6,7 @@ p=Path('js/pages/triples.js')
 s=p.read_text(encoding='utf-8')
 
 if 'm6LeaderRows' not in s:
-    marker='const m6History=(m6.history||[]).slice(-6).reverse().map(x=>`<tr><td>№${x.targetId}</td><td>№${x.sourceId} · ${esc(x.sourceCode)}</td><td><b>${esc(x.triples?.length?x.triples.join(" / "):"—")}</b></td><td>${x.targetFact?`${esc(x.targetFact.code)} · ${esc(x.check)}`:"ожидает факт"}</td></tr>`).join("");'
+    pat=re.compile(r'( const m6History=\(m6\.history\|\|\[\]\)\.slice\(-8\)\.reverse\(\)\.map\(x=>`<tr>.*?</tr>`\)\.join\(""\);)',re.S)
     add='''
  const m6Window=(m6.history||[]).slice(-30),m6Counts=Object.fromEntries(Array.from({length:10},(_,i)=>[`${i}${i}${i}`,0])),m6Hits=Object.fromEntries(Array.from({length:10},(_,i)=>[`${i}${i}${i}`,0]));
  for(const row of m6Window){for(const t of row.triples||[])if(t in m6Counts)m6Counts[t]++;if(row.targetFact){for(const t of row.triples||[])if(t===row.targetFact.code&&t in m6Hits)m6Hits[t]++;}}
@@ -14,15 +14,15 @@ if 'm6LeaderRows' not in s:
  const m6LeaderRows=m6Ranked.map(([t,n],i)=>{if(m6Prev===null||n!==m6Prev){m6Place=i+1;m6Prev=n;}return `<tr><td><b>${m6Place}</b></td><td><b>${esc(t)}</b></td><td><b>${n}</b></td><td>${((n/30)*100).toFixed(1)}%</td><td>${m6Hits[t]}</td></tr>`;}).join("");
  const m6LeadCount=m6Ranked[0]?.[1]||0,m6Leaders=m6Ranked.filter(x=>x[1]===m6LeadCount&&m6LeadCount>0).map(x=>x[0]);
  const m6LeaderSummary=`Окно: ${m6Window.length}/30 последних M6 фактов-источников · лидер: ${m6Leaders.length?m6Leaders.join(" / "):"—"}${m6LeadCount?` ×${m6LeadCount}`:""}`;'''
-    if marker not in s:
-        raise SystemExit('M6 history marker not found')
-    s=s.replace(marker,marker+add,1)
+    s,n=pat.subn(lambda m:m.group(1)+add,s,count=1)
+    if n!=1:
+        raise SystemExit(f'M6 history marker replacements={n}')
 
-old='<div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE'
-new='<div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><h4 style="margin-top:14px">🏆 Лидеры M6-прогноза · последние 30 тиражей</h4><p class="muted">${esc(m6LeaderSummary)} · каждая XXX считается один раз на один one-shot M6 Frozen.</p><div class="table-wrap"><table><thead><tr><th>Место</th><th>Тройня</th><th>Прогнозов</th><th>Доля от 30</th><th>HIT</th></tr></thead><tbody>${m6LeaderRows}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE'
-if old not in s:
+needle='</tbody></table></div><p class="muted">После ВТОРОГО выхода family она становится ACTIVE'
+insert='</tbody></table></div><h4 style="margin-top:14px">🏆 Лидеры M6-прогноза · последние 30 тиражей</h4><p class="muted">${esc(m6LeaderSummary)} · каждая XXX считается один раз на один one-shot M6 Frozen.</p><div class="table-wrap"><table><thead><tr><th>Место</th><th>Тройня</th><th>Прогнозов</th><th>Доля от 30</th><th>HIT</th></tr></thead><tbody>${m6LeaderRows}</tbody></table></div><p class="muted">После ВТОРОГО выхода family она становится ACTIVE'
+if needle not in s:
     raise SystemExit('M6 card html marker not found')
-s=s.replace(old,new,1)
+s=s.replace(needle,insert,1)
 p.write_text(s,encoding='utf-8')
 
 p=Path('data/version.json')
