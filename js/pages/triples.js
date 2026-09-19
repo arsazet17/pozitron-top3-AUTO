@@ -8,6 +8,27 @@ function fmtList(a){return a&&a.length?a.join(" / "):"—"}
 function stageLabel(x){return `${x.triple} · ${x.stage}/2 ${x.stage===1?"NEW":"LAST"}`}
 function serialLabel(x){return `${x.triple} · rem${x.rem} · серия ${x.streak}`}
 function uniqTriples(a=[]){return [...new Set((a||[]).filter(isRepeated))].sort((x,y)=>Number(x[0])-Number(y[0]))}
+function familyOf(v){const s=String(v??"").replace(/\D/g,"").padStart(3,"0").slice(-3);return s.split("").sort().join("")}
+function repeatFamilies150(ctx,limit=150){
+ const full=ctx.fullArchive,combos=full?.combos||[];
+ if(full&&combos.length){
+  const total=Math.min(limit,combos.length),start=combos.length-total,map=new Map();
+  for(let i=start;i<combos.length;i++){
+   const code=String(combos[i]??"").padStart(3,"0");if(!/^\d{3}$/.test(code))continue;
+   const family=familyOf(code),pos=i-start+1,draw=Number(full.fromDraw)+i;
+   if(!map.has(family))map.set(family,{family,count:0,positions:[],draws:[],codes:[]});
+   const x=map.get(family);x.count++;x.positions.push(pos);x.draws.push(draw);x.codes.push(code);
+  }
+  return {rows:[...map.values()].filter(x=>x.count>=2).sort((a,b)=>b.count-a.count||a.family.localeCompare(b.family)),total,fromDraw:Number(full.fromDraw)+start,toDraw:Number(full.fromDraw)+combos.length-1};
+ }
+ const real=(ctx.records||[]).map(r=>({draw:Number(r.draw??r.id),code:String(r.combo??((r.A!=null&&r.B!=null&&r.C!=null)?`${r.A}${r.B}${r.C}`:""))})).filter(r=>Number.isInteger(r.draw)&&/^\d{3}$/.test(r.code)).sort((a,b)=>a.draw-b.draw).slice(-limit),map=new Map();
+ real.forEach((r,i)=>{const family=familyOf(r.code);if(!map.has(family))map.set(family,{family,count:0,positions:[],draws:[],codes:[]});const x=map.get(family);x.count++;x.positions.push(i+1);x.draws.push(r.draw);x.codes.push(r.code)});
+ return {rows:[...map.values()].filter(x=>x.count>=2).sort((a,b)=>b.count-a.count||a.family.localeCompare(b.family)),total:real.length,fromDraw:real[0]?.draw??null,toDraw:real.at(-1)?.draw??null};
+}
+function repeatFamilies150Html(x){
+ const rows=(x.rows||[]).map((r,i)=>`<tr><td>${i+1}</td><td><b>family${esc(r.family)}</b></td><td><b>${esc(r.count)}</b></td><td>${esc(Math.max(0,r.count-1))}</td><td>${esc(r.positions.join(", "))}</td><td>${esc(r.draws.map(n=>`№${n}`).join(", "))}</td><td>${esc(r.codes.join(" / "))}</td></tr>`).join("");
+ return `<p class="muted"><b>Окно:</b> последние ${esc(x.total)}/150 фактических тиражей${x.fromDraw!=null?` · №${esc(x.fromDraw)}…№${esc(x.toDraw)}`:""}. Показываются только семьи, которые встретились минимум 2 раза. Позиция 1 = самый старый тираж окна, позиция ${esc(x.total||150)} = самый новый.</p><div class="table-wrap"><table><thead><tr><th>№</th><th>Семья</th><th>Выходов</th><th>Повторов</th><th>Позиции в окне</th><th>Тиражи</th><th>Комбинации</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Повторных семей в текущем окне нет.</td></tr>'}</tbody></table></div>`;
+}
 function tripleStats(ctx){
  const full=ctx.fullArchive,combos=full?.combos||[];const stats=Array.from({length:10},(_,d)=>({triple:`${d}${d}${d}`,count:0,lastDraw:null,gap:null}));
  for(let i=0;i<combos.length;i++){const c=combos[i];if(isRepeated(c)){const d=Number(c[0]),x=stats[d];x.count++;x.lastDraw=Number(full.fromDraw)+i}}
@@ -49,7 +70,7 @@ function m4Fallback(ctx,allLinks,baseCore){
 export function renderTriples(ctx){
  const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive);
  if(!s)return card("🔮 ТРОЙНИ · M1 / M2 / M3","<p>Недостаточно фактических данных для расчёта.</p>");
- const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader;
+ const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader,repeats150=repeatFamilies150(ctx);
  const leader=L.leaders.length?`${L.leaders.join(" / ")} ×${L.max}`:"—";
  const serial=s.serialLeaders?.length?s.serialLeaders.map(serialLabel).join(" · "):"—";
  const m1=fmtList(s.m1),m2=s.m2.length?s.m2.map(stageLabel).join(" · "):"—",m3=s.m3.length?s.m3.map(x=>`${stageLabel(x)} · ${x.sourceCode}+${x.bornCode||""}`).join(" · "):"—";
@@ -70,11 +91,12 @@ export function renderTriples(ctx){
  ${card("M3 · МЕТОД 3",`<div class="kpi" style="font-size:22px">${esc(m3)}</div><div class="muted">15 предыдущих · все перестановки · 1/2 NEW → 2/2 LAST</div>`)}
  </div>
  ${card("📜 АРХИВ ПРОГНОЗОВ ЗА ПОСЛЕДНИЕ 20 ТИРАЖЕЙ",`${archiveHtml(s)}<p class="muted">Факт → Frozen ДО → проверка → Frozen после.</p>`)}
+ ${card("🔁 ПОВТОРНЫЕ СЕМЬИ · ПОСЛЕДНИЕ 150 ТИРАЖЕЙ",repeatFamilies150Html(repeats150))}
  ${card("🏆 ТАБЛИЦА ЛИДЕРОВ ОТ ТРОЙНИ · ВСЕ СВЯЗИ",allLinksHtml(allLinks))}
  ${card("📊 ЛИДЕР ПО ЧАСТОТЕ · БЕЗ ДУБЛЯЖЕЙ · ПОСЛЕДНИЕ 20",`${frequencyHtml(s.frequency,L.leaders)}<p class="muted">Считаются только новые рождения. Продление 1/2 → 2/2 второй раз не считается; M1+M3 из одного source = одно рождение; открытое окно M2 не считается; package→000 = одно рождение 000.</p>`)}
  ${card("🧩 ПАКЕТ ПОДРЯД → 000",`<p><b>${esc(pkg)}</b></p><p class="muted">Если подряд идущие исходные комбинации дают разные XXX-тройки, отдельные XXX заменяются итоговым 000 с фиксацией участвовавших исходников.</p>`)}
  ${card("🔎 КОНТРОЛЬ ПРАВИЛ",`<div class="table-wrap"><table><tbody><tr><th>МАЯЧОК</th><td>${esc(TRIPLE_BEACON_RULE_CODE)} · ${beacon.signal?"SIGNAL":"NO SIGNAL"}</td></tr><tr><th>Лидеры от тройни</th><td>${esc(ALL_LINKS_RULE_CODE)}</td></tr><tr><th>Серийный лидер</th><td>${esc(serialEvents)}</td></tr><tr><th>Exact BLOCK</th><td>${esc(blocks)}</td></tr><tr><th>M2 события</th><td>${esc(m2events)}</td></tr><tr><th>Зависимость M1/M3</th><td>${esc(deps)}</td></tr><tr><th>Mirror gate</th><td>${esc(s.diag.mirror||"—")} · ${s.diag.mirrorPass?"PASS":"не подтверждён"}${Number.isFinite(s.diag.mirrorHits)?` · exact ${esc(s.diag.mirrorHits)}`:""}</td></tr><tr><th>Версия правил M1/M2/M3</th><td>${esc(TRIPLE_CHAT_RULE_CODE)}</td></tr></tbody></table></div>`)}
  ${card("000–999 · ФАКТИЧЕСКАЯ СТАТИСТИКА ПОЛНОГО АРХИВА",`<div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Сколько раз</th><th>Последний тираж</th><th>Тиражей назад</th></tr></thead><tbody>${stats.map(x=>`<tr><td><b>${x.triple}</b></td><td>${x.count}</td><td>${x.lastDraw==null?"—":"№"+x.lastDraw}</td><td>${x.gap==null?"—":x.gap}</td></tr>`).join("")}</tbody></table></div>`)}
- ${card("ПОСЛЕДНИЕ ФАКТИЧЕСКИЕ ТРОЙНИ",`<div class="table-wrap"><table><thead><tr><th>Тираж</th><th>Тройня</th><th>Тиражей назад</th></tr></thead><tbody>${facts.map(x=>`<tr><td>№${x.draw}</td><td><b>${x.combo}</b></td><td>${x.gap}</td></tr>`).join("")||'<tr><td colspan="3">Данных пока нет.</td></tr>'}</tbody></table></div>`)}
- ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер, МАЯЧОК и таблица лидеров от тройни не получают MASTER score.</p>`)}`;
+ ${card("ПОСЛЕДНИЕ ФАКТИЧЕСКИЕ ТРОЙНИ",`<div class="table-wrap"><table><thead><tr><th>Тираж</th><th>Тройня</th><th>Тиражей назад</th></tr></thead><tbody>${facts.map(x=>`<tr><td>№${x.draw}</td><td><b>${x.combo}</b></td><td>${x.gap}</td></tr>`).join("")||'<tr><td colspan="3">Данных пока нет.</td></tr>`)}
+ ${card("ПРАВИЛО",`<p><b>Раздел «Тройни» считается отдельно от CHAT MASTER.</b> M1 / M2 / M3, серийный лидер, МАЯЧОК и таблица лидеров от тройни не получают MASTER score. Таблица повторных family за 150 тиражей — только аналитика и не влияет на Frozen.</p>`)}`;
 }
