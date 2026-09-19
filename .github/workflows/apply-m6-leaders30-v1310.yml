@@ -1,8 +1,9 @@
-name: Add M6 last-30 forecast leaders table
+name: Apply M6 leaders 30
 
 on:
   push:
     paths:
+      - 'patch-m6-leaders30.py'
       - '.github/workflows/apply-m6-leaders30-v1310.yml'
 
 permissions:
@@ -15,38 +16,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Add M6 leaders for last 30 draws
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re,json
-          VER='1.3.10'
-
-          p=Path('js/pages/triples.js')
-          s=p.read_text(encoding='utf-8')
-          if 'm6LeaderRows' not in s:
-              marker='const m6History=(m6.history||[]).slice(-6).reverse().map(x=>`<tr><td>№${x.targetId}</td><td>№${x.sourceId} · ${esc(x.sourceCode)}</td><td><b>${esc(x.triples?.length?x.triples.join(" / "):"—")}</b></td><td>${x.targetFact?`${esc(x.targetFact.code)} · ${esc(x.check)}`:"ожидает факт"}</td></tr>`).join("");'
-              add='''
- const m6Window=(m6.history||[]).slice(-30),m6Counts=Object.fromEntries(Array.from({length:10},(_,i)=>[`${i}${i}${i}`,0])),m6Hits=Object.fromEntries(Array.from({length:10},(_,i)=>[`${i}${i}${i}`,0]));
- for(const row of m6Window){for(const t of row.triples||[])if(t in m6Counts)m6Counts[t]++;if(row.targetFact){for(const t of row.triples||[])if(t===row.targetFact.code&&t in m6Hits)m6Hits[t]++;}}
- const m6Ranked=Object.entries(m6Counts).sort((a,b)=>b[1]-a[1]||Number(a[0][0])-Number(b[0][0]));let m6Prev=null,m6Place=0;
- const m6LeaderRows=m6Ranked.map(([t,n],i)=>{if(m6Prev===null||n!==m6Prev){m6Place=i+1;m6Prev=n;}return `<tr><td><b>${m6Place}</b></td><td><b>${esc(t)}</b></td><td><b>${n}</b></td><td>${((n/30)*100).toFixed(1)}%</td><td>${m6Hits[t]}</td></tr>`;}).join("");
- const m6LeadCount=m6Ranked[0]?.[1]||0,m6Leaders=m6Ranked.filter(x=>x[1]===m6LeadCount&&m6LeadCount>0).map(x=>x[0]);
- const m6LeaderSummary=`Окно: ${m6Window.length}/30 последних M6 фактов-источников · лидер: ${m6Leaders.length?m6Leaders.join(" / "):"—"}${m6LeadCount?` ×${m6LeadCount}`:""}`;'''
-              if marker not in s: raise SystemExit('M6 history marker not found')
-              s=s.replace(marker,marker+add,1)
-
-          old='<div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE'
-          new='<div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><h4 style="margin-top:14px">🏆 Лидеры M6-прогноза · последние 30 тиражей</h4><p class="muted">${esc(m6LeaderSummary)} · каждая XXX считается один раз на один one-shot M6 Frozen.</p><div class="table-wrap"><table><thead><tr><th>Место</th><th>Тройня</th><th>Прогнозов</th><th>Доля от 30</th><th>HIT</th></tr></thead><tbody>${m6LeaderRows}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE'
-          if old not in s: raise SystemExit('M6 card html marker not found')
-          s=s.replace(old,new,1)
-          p.write_text(s,encoding='utf-8')
-
-          p=Path('data/version.json'); d=json.loads(p.read_text(encoding='utf-8') or '{}'); d['version']=VER; d['buildDate']='2026-09-19'; d['note']='Тройни: M6 REPEAT-FAMILY-150 V2 + таблица лидеров M6-прогноза за последние 30 тиражей'; p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          p=Path('sw.js'); s=p.read_text(encoding='utf-8'); s=re.sub(r'const CACHE="[^"]+";', 'const CACHE="top3-auto-v1310-m6-leaders30";',s,count=1); p.write_text(s,encoding='utf-8')
-          p=Path('manifest.webmanifest'); s=p.read_text(encoding='utf-8'); s=re.sub(r'"start_url":\s*"[^"]+"',f'"start_url": "./?v={VER}"',s,count=1); p.write_text(s,encoding='utf-8')
-          PY
-      - name: Commit M6 leaders table
+      - name: Apply patch
+        run: python3 patch-m6-leaders30.py
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
