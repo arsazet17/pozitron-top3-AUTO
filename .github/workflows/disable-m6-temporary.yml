@@ -1,0 +1,77 @@
+name: Temporarily disable M6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/disable-m6-temporary.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Disable M6 in TOP-3 AUTO
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,json
+          VER='1.3.11'
+
+          p=Path('js/pages/triples.js')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'\nimport \{computeM6RepeatFamily,collectM5ExactOccupied,M6_RULE_CODE\} from "\.\./engine/m6-repeat-family\.js";', '', s, count=1)
+          s=s.replace(',m6=computeM6RepeatFamily(ctx.records,{exactOccupiedDraws:collectM5ExactOccupied(ctx)})','')
+          s=s.replace(',m6=computeM6RepeatFamily(ctx.records)','')
+
+          # Rebuild the combined frozen without M6 and remove all M6 helper calculations.
+          pat=r"const baseCore=uniqTriples\(s\.frozen\).*?(?=const windows=s\.windows\.length)"
+          repl="const baseCore=uniqTriples(s.frozen),fallback=m4Fallback(ctx,allLinks,baseCore),combinedFrozen=uniqTriples([...baseCore,...fallback.values]);\n "
+          s,n=re.subn(pat,repl,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'AUTO: combined M6 block replacements={n}')
+
+          s=s.replace('🔮 ИТОГОВЫЙ FROZEN · CORE + M6 + M4','🔮 ИТОГОВЫЙ FROZEN · CORE + M4')
+          s=re.sub(r' · M6 \$\{esc\(fmtList\(m6Frozen\)\)\}', '', s)
+
+          # Remove entire M6 card, including its last-30 leaders table.
+          s,n2=re.subn(r'\$\{card\("🧬 M6 · REPEAT-FAMILY-150 V2",.*?(?=\$\{card\("🔦 МАЯЧОК)', '', s, count=1, flags=re.S)
+          if n2!=1:
+              raise SystemExit(f'AUTO: M6 card replacements={n2}')
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('data/version.json')
+          d=json.loads(p.read_text(encoding='utf-8') or '{}')
+          d['version']=VER
+          d['buildDate']='2026-09-19'
+          d['note']='Тройни: M6 временно отключён; не входит в прогнозы, Frozen и таблицы лидеров'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          p=Path('sw.js')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'const CACHE="[^"]+";', 'const CACHE="top3-auto-v1311-m6-off";',s,count=1)
+          s=s.replace('"./js/engine/triple-beacon.js","./js/engine/m6-repeat-family.js",','"./js/engine/triple-beacon.js",')
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('manifest.webmanifest')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'"start_url":\s*"[^"]+"',f'"start_url": "./?v={VER}"',s,count=1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit M6 disabled build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/triples.js data/version.json sw.js manifest.webmanifest
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "TOP3 AUTO v1.3.11: temporarily disable M6"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
