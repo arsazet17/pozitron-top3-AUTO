@@ -1,0 +1,45 @@
+from pathlib import Path
+import re, json
+
+VER='1.3.9'
+p=Path('js/pages/triples.js')
+s=p.read_text(encoding='utf-8')
+imp='import {computeM6RepeatFamily,collectM5ExactOccupied,M6_RULE_CODE} from "../engine/m6-repeat-family.js";\n'
+if imp not in s:
+    marker='import {computeTripleBeacon,TRIPLE_BEACON_RULE_CODE} from "../engine/triple-beacon.js";\n'
+    if marker not in s: raise SystemExit('triple beacon import marker not found')
+    s=s.replace(marker,marker+imp,1)
+old='const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive);'
+new='const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive),m6=computeM6RepeatFamily(ctx.records,{exactOccupiedDraws:collectM5ExactOccupied(ctx)});'
+if old in s:s=s.replace(old,new,1)
+if 'const m6Frozen=' not in s:
+    marker='const m3=s.m3.length?s.m3.map(x=>`${stageLabel(x)} · ${x.sourceCode}+${x.bornCode||""}`).join(" · "):"—";'
+    add='''const m6Frozen=m6.current?.triples||[];
+ const combinedFrozen=[...new Set([...(s.frozen||[]),...m6Frozen])].sort((a,b)=>Number(a[0])-Number(b[0]));
+ const m6Signal=m6Frozen.length?m6Frozen.join(" / "):"— НЕТ СИГНАЛА";
+ const m6Paths=m6.current?.details?.length?m6.current.details.map(x=>`family${x.activeFamily} + family${x.currentFamily} → ${x.triple}`).join(" · "):"XXX-схлопываний нет";
+ const m6Active=m6.current?.active?.length?m6.current.active.map(x=>`family${x.family}→№${x.activeUntil}`).join(" · "):"активных repeat-family нет";
+ const m6History=(m6.history||[]).slice(-6).reverse().map(x=>`<tr><td>№${x.targetId}</td><td>№${x.sourceId} · ${esc(x.sourceCode)}</td><td><b>${esc(x.triples?.length?x.triples.join(" / "):"—")}</b></td><td>${x.targetFact?`${esc(x.targetFact.code)} · ${esc(x.check)}`:"ожидает факт"}</td></tr>`).join("");'''
+    if marker not in s: raise SystemExit('m3 marker not found')
+    s=s.replace(marker,marker+'\n '+add,1)
+old_frozen='${esc(fmtList(s.frozen))}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")}</div>'
+new_frozen='${esc(fmtList(combinedFrozen))}</div><div class="muted">на ${esc(ctx.target?.date||"—")} · ${esc(ctx.target?.time||"—")} · M6 включён one-shot</div>'
+if old_frozen in s:s=s.replace(old_frozen,new_frozen,1)
+if 'M6 · REPEAT-FAMILY-150 V2' not in s:
+    marker='${card("🔥 СЕРИЙНЫЙ ЛИДЕР · 5 ТИРАЖЕЙ"'
+    card='''${card("🧬 M6 · REPEAT-FAMILY-150 V2",`<div class="kpi" style="font-size:26px">${esc(m6Signal)}</div><div class="muted">target №${esc(m6.current?.targetId||"—")} · source №${esc(m6.current?.sourceId||"—")} ${esc(m6.current?.sourceCode||"—")} · new family${esc(m6.current?.currentFamily||"—")}</div><p><b>${esc(m6Paths)}</b></p><p class="muted">ACTIVE: ${esc(m6Active)} · M5 exact-occupied: ${esc(m6.occupied?.length||0)}</p><div class="table-wrap"><table><thead><tr><th>Target</th><th>Факт-источник</th><th>M6 Frozen</th><th>Факт target / проверка</th></tr></thead><tbody>${m6History}</tbody></table></div><p class="muted">После 2-го выхода family она ACTIVE со следующего тиража на 150 тиражей. Каждый новый факт: каждая ACTIVE repeat-family + family новой комбинации; все уникальные перестановки, mod10, сохраняются только XXX. ACTIVE family между собой не складываются. M5 EXCLUSIVE EXACT имеет приоритет. One-shot только на следующий тираж. Код: ${esc(M6_RULE_CODE)}.</p>`)}
+ '''
+    if marker not in s: raise SystemExit('serial card marker not found')
+    s=s.replace(marker,card+marker,1)
+p.write_text(s,encoding='utf-8')
+
+p=Path('data/version.json')
+d=json.loads(p.read_text(encoding='utf-8') or '{}')
+d['version']=VER;d['buildDate']='2026-09-19';d['note']='Тройни: добавлен M6 REPEAT-FAMILY-150 V2; one-shot + EXCLUSIVE EXACT hook'
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+p=Path('sw.js');s=p.read_text(encoding='utf-8');s=re.sub(r'const CACHE="[^"]+";',f'const CACHE="top3-auto-v139-m6-repeat-family-v2";',s,count=1)
+if './js/engine/m6-repeat-family.js' not in s:s=s.replace('"./js/engine/triple-beacon.js",','"./js/engine/triple-beacon.js","./js/engine/m6-repeat-family.js",',1)
+p.write_text(s,encoding='utf-8')
+
+p=Path('manifest.webmanifest');s=p.read_text(encoding='utf-8');s=re.sub(r'"start_url":\s*"[^"]+"',f'"start_url": "./?v={VER}"',s,count=1);p.write_text(s,encoding='utf-8')
