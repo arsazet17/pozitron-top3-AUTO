@@ -1,5 +1,5 @@
-const CACHE='top3-analyzer-v0.6.2';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./engine.js','./seed.json','./manifest.webmanifest','../assets/icon.png'];
+const CACHE='top3-analyzer-v0.6.2-iconfix';
+const ASSETS=['./','./index.html','./styles.css','./app.js','./engine.js','./seed.json','./manifest.webmanifest','../assets/top3-777.svg?v=062-iconfix-2109'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.pathname.includes('/data/')){e.respondWith(fetch(e.request,{cache:'no-store'}).catch(()=>caches.match(e.request)));return}e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request)))})
