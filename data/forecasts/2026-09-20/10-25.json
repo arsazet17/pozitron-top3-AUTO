@@ -8110,9 +8110,64 @@
   },
   "key": "2026-09-20|10:25",
   "issuedAt": "2026-09-20T07:21:15.525Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "450",
+  "factAt": "2026-09-20 10:25",
+  "audit": {
+    "fact": "450",
+    "family": "045",
+    "master": {
+      "hit": false,
+      "exact": false,
+      "families": [
+        "017",
+        "145",
+        "003"
+      ]
+    },
+    "main": {
+      "hit": false,
+      "seq": 0,
+      "td": 2,
+      "classification": "single-source RAW miss"
+    },
+    "algorithm": {
+      "hit": false,
+      "relations": []
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "030"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "0": {
+        "seq": 30,
+        "seqTotal": 125,
+        "td": 31,
+        "tdTotal": 135
+      },
+      "4": {
+        "seq": 34,
+        "seqTotal": 125,
+        "td": 41,
+        "tdTotal": 135
+      },
+      "5": {
+        "seq": 41,
+        "seqTotal": 125,
+        "td": 42,
+        "tdTotal": 135
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "single-source RAW miss",
+    "workError": "MASTER MISS — сохранить freeze; проверить RAW/relations/groups; правила не менять по одному факту"
+  },
   "mirror": [
     {
       "base": "600",
