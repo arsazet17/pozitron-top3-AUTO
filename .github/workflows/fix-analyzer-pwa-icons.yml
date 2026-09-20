@@ -1,0 +1,33 @@
+name: Fix Analyzer PWA icons
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-analyzer-pwa-icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-icons:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ImageMagick
+        run: sudo apt-get update -qq && sudo apt-get install -y imagemagick
+      - name: Generate valid PWA icons
+        run: |
+          convert assets/top3-777-original.png -filter Lanczos -resize 192x192! assets/top3-777-192.png
+          convert assets/top3-777-original.png -filter Lanczos -resize 512x512! assets/top3-777-512.png
+          identify assets/top3-777-192.png assets/top3-777-512.png
+      - name: Commit generated icons
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/top3-777-192.png assets/top3-777-512.png
+          git diff --cached --quiet && exit 0
+          git commit -m "Generate valid 192px and 512px Analyzer PWA icons"
+          git push
