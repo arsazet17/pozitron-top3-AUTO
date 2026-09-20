@@ -14,9 +14,24 @@ import {bindCollapsibles} from "./ui.js";
 
 const loadJSON=async p=>{const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error(`${p}: ${r.status}`);return r.json()};
 const optionalJSON=async(p,fallback)=>{try{return await loadJSON(p)}catch{return fallback}};
-let ctx=null,state=loadState()||{},page=location.hash.slice(1)||"home";
+let ctx=null,state=loadState()||{},page=location.hash.slice(1)||"home",deferredInstallPrompt=null;
 
 function toast(s){const x=document.querySelector("#toast");if(!x)return;x.textContent=s;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),2400)}
+function isStandalone(){return window.matchMedia?.("(display-mode: standalone)")?.matches||window.navigator.standalone===true}
+function setupInstall(){
+  const btn=document.querySelector("#installBtn");if(!btn)return;
+  const sync=()=>{btn.hidden=isStandalone()};
+  window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;sync()});
+  window.addEventListener("appinstalled",()=>{deferredInstallPrompt=null;btn.hidden=true;toast("TOP-3 установлен")});
+  btn.onclick=async()=>{
+    if(isStandalone()){btn.hidden=true;return}
+    if(deferredInstallPrompt){
+      const p=deferredInstallPrompt;deferredInstallPrompt=null;await p.prompt();try{await p.userChoice}catch{}sync();return;
+    }
+    toast("На телефоне: меню браузера ⋮ → «Установить приложение» / «Добавить на главный экран»");
+  };
+  sync();
+}
 function recentForecasts(){return state.recentForecasts||state.forecastHistory||[]}
 function pendingIssue(target){const key=`${target.date}|${target.time}`;return [...recentForecasts()].reverse().find(x=>x.key===key||`${x.target?.date}|${x.target?.time}`===key)}
 function recordKey(x){return x?.draw!=null&&String(x.draw)!==""?`d:${Number(x.draw)}`:`t:${x?.date||""}|${x?.time||""}|${x?.combo||""}`}
@@ -70,7 +85,7 @@ async function init(){
   const [serverRecords,rules,version,serverState,index,latest,bootstrap,fullArchive]=await Promise.all([loadJSON("./data/archive.json"),loadJSON("./data/rules.json"),loadJSON("./data/version.json"),optionalJSON("./data/app-state.json",{}),optionalJSON("./data/forecast-index.json",[]),optionalJSON("./data/latest.json",null),optionalJSON("./data/bootstrap-tail.json",null),loadFullArchive()]);
   adoptServerState(serverState);const records=mergeRecords(serverRecords,expandBootstrap(bootstrap));ctx={records,rules,version,forecastIndex:index,latest,fullArchive:extendFullArchive(fullArchive,records)};document.querySelector("#versionBadge").textContent="v"+version.version;
   document.querySelectorAll(".nav").forEach(n=>n.onclick=()=>{page=n.dataset.page;location.hash=page;document.querySelector("#sidebar").classList.remove("open");render()});
-  document.querySelector("#menuBtn").onclick=()=>document.querySelector("#sidebar").classList.toggle("open");document.querySelector("#refreshBtn").onclick=refresh;window.addEventListener("hashchange",()=>{page=location.hash.slice(1)||"home";render()});render();
+  document.querySelector("#menuBtn").onclick=()=>document.querySelector("#sidebar").classList.toggle("open");document.querySelector("#refreshBtn").onclick=refresh;setupInstall();window.addEventListener("hashchange",()=>{page=location.hash.slice(1)||"home";render()});render();
   if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 init().catch(e=>{document.querySelector("#main").innerHTML=`<div class="card"><div class="card-body bad">Ошибка запуска: ${e.message}</div></div>`});
