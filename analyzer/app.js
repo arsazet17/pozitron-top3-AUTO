@@ -1,7 +1,7 @@
 import {hydrateSeed,processFact,computeM5ForNext,computeM6Strict,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.0', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.6.2', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json'};
 let state=null,fullArchive=[],busy=false,timer=null,repeatFilter='all',lastAudit=null;
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,6 +15,14 @@ const autoOn=()=>localStorage.getItem(AUTO)!=='0';
 const lf=()=>state?.facts?.at(-1)||null;
 const fc=()=>state?.methodState?.currentForecast||{FINAL:[]};
 
+function stripM4FromFinal(){
+  const f=state?.methodState?.currentForecast;if(!f)return;
+  const core=[...(f.M1||[]),...(f.M2_ready||[]),...(f.M3||[]),...(f.serial_leader||[])];
+  f.FINAL_CORE=[...new Set(core.filter(Boolean))];
+  f.FINAL=[...new Set([...f.FINAL_CORE,...(f.M6_REPEAT_FAMILY_150||[])].filter(Boolean))];
+  f.M4_IN_FINAL=false;
+  f.status=f.FINAL.length?'FROZEN':'NO VALID NUMERIC SIGNAL';
+}
 function mergeArchive(rows){const m=new Map(fullArchive.map(x=>[x.draw,x]));for(const r0 of rows||[]){const r=norm(r0);if(r)m.set(r.draw,r)}fullArchive=[...m.values()].sort((a,b)=>a.draw-b.draw)}
 function countsThrough(draw){const c={};for(const x of fullArchive){if(x.draw>draw)break;c[x.combo]=(c[x.combo]||0)+1}return c}
 function setStatus(kind,msg){state.syncMeta??={};state.syncMeta.status=kind;state.syncMeta.message=msg;save();renderSync()}
@@ -22,7 +30,7 @@ function setStatus(kind,msg){state.syncMeta??={};state.syncMeta.status=kind;stat
 async function boot(){
   const saved=localStorage.getItem(KEY);
   if(saved){state=JSON.parse(saved)}else{const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)}
-  state.appVersion=VER;state.syncMeta??={};
+  stripM4FromFinal();state.appVersion=VER;state.syncMeta??={};save();
   try{const rows=await fetchJSON(REMOTE.archive);mergeArchive(rows)}catch{mergeArchive(state.facts)}
   render();setupTimer();sync(false).catch(()=>{});
 }
@@ -43,17 +51,18 @@ async function sync(manual=false){
     const missing=[];for(let n=localNo+1;n<=remote.draw;n++){const r=by.get(n);if(!r)throw Error(`Пропущен №${n} в удалённом архиве`);missing.push(r)}
     let comboCounts=countsThrough(localNo),added=0;
     for(const fact of missing){state.mirrorExactCounts={...comboCounts};const res=processFact(state,fact);state=res.state;lastAudit=res.audit;comboCounts[fact.combo]=(comboCounts[fact.combo]||0)+1;added++}
-    state.mirrorExactCounts={...comboCounts};state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;save();setStatus('ok',`Загружено: ${added} · до №${remote.draw}`);render();
+    stripM4FromFinal();state.mirrorExactCounts={...comboCounts};state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;save();setStatus('ok',`Загружено: ${added} · до №${remote.draw}`);render();
   }catch(e){state.syncMeta.lastError=String(e.message||e);setStatus('error',`Ошибка AUTO: ${e.message||e}`)}finally{busy=false;renderSync()}
 }
 
 function setupTimer(){if(timer)clearInterval(timer);if(autoOn())timer=setInterval(()=>sync(false),120000)}
-function render(){renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
+function render(){stripM4FromFinal();renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
 function renderMain(){
   const x=lf(),f=fc(),m5=computeM5ForNext(state.facts),m6=computeM6Strict(state.facts);
   $('#version').textContent='v'+VER;$('#currentFact').textContent=x?`№${x.draw} · ${x.date} ${x.time} · ${x.combo}`:'—';$('#nextDraw').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';
   $('#lastResult').textContent=x?.combo||'—';$('#lastResultMeta').textContent=x?`№${x.draw} · ${x.date} ${x.time}`:'—';$('#finalFrozen').textContent=sig(f.FINAL);$('#finalFrozenTarget').textContent=f.draw?`На №${f.draw} · ${f.date} ${f.time}`:'—';
   [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL';
+  const m4Label=$('#m4Card')?.previousElementSibling;if(m4Label)m4Label.textContent='M4 · Итог (вне Frozen)';
   $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);
   $('#m6Occurrences').innerHTML=(m6.occurrences||[]).map((o,i)=>`<span class="chip">${i+1}. №${o.draw} ${o.combo}</span>`).join(' ')||'<span class="muted">Нет</span>';
   $('#m6Paths').innerHTML=Object.entries(m6.details||{}).map(([t,p])=>`<details><summary><b>${t}</b> · ${p.length} путей</summary><div class="mono">${p.slice(0,12).map(esc).join('<br>')}</div></details>`).join('')||'<span class="muted">Нет M6-сигнала</span>';
@@ -80,7 +89,7 @@ $('#repeatSearch')?.addEventListener('input',renderRepeats);$('#factsArchiveSear
 if(localStorage.getItem('top3-theme')==='light')document.documentElement.classList.add('light');
 $('#resetBtn')?.addEventListener('click',()=>{if(confirm('Сбросить локальное состояние и заново синхронизировать?')){localStorage.removeItem(KEY);location.reload()}});
 $('#exportBtn')?.addEventListener('click',()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({state},null,2)],{type:'application/json'}));a.download=`TOP3_backup_${lf()?.draw||'state'}.json`;a.click()});
-$('#importInput')?.addEventListener('change',async e=>{try{const d=JSON.parse(await e.target.files[0].text());state=d.state||d;save();render()}catch(err){alert('Ошибка backup: '+err.message)}e.target.value=''});
+$('#importInput')?.addEventListener('change',async e=>{try{const d=JSON.parse(await e.target.files[0].text());state=d.state||d;stripM4FromFinal();save();render()}catch(err){alert('Ошибка backup: '+err.message)}e.target.value=''});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&autoOn())sync(false)});window.addEventListener('online',()=>{if(autoOn())sync(false)});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 boot();
