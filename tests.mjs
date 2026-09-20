@@ -8,9 +8,9 @@ import {
 } from "./js/engine/triples-chat.js";
 import {ALL_LINKS_RULE_CODE,computeAllLinksForRows,computeTripleAllLinks} from "./js/engine/triple-all-links.js";
 import {
-  M6_RULE_CODE,M6_RULE_START_FACT,M6_FORWARD_TARGET,M6_TTL,
-  familyOf,familyTripleResults,computeM5ExactState,computeM6RepeatFamily
-} from "./js/engine/m6-repeat-family.js";
+  M6_V3_RULE_CODE,M6_V3_WINDOW,M6_V3_FORWARD_START_SOURCE_ID,
+  m6Family,m6SelfResults,computeM6V3Strict
+} from "./js/engine/m6-v3-strict.js";
 
 const records=JSON.parse(fs.readFileSync("./data/archive.json","utf8"));
 const rules=JSON.parse(fs.readFileSync("./data/rules.json","utf8"));
@@ -77,26 +77,39 @@ if(currentAllLinks.total>0){const shareSum=currentAllLinks.ranking.reduce((a,b)=
 ok(currentAllLinks.links?.length===currentAllLinks.total,"current all-links must expose full journal");
 ok(currentAllLinks.facts?.length===currentAllLinks.cycleRows,"current all-links must expose per-fact statistics");
 
-ok(M6_RULE_CODE==="TOP3-M6-REPEAT-FAMILY-150-V2-19.09.2026","M6 V2 rule code");
-ok(M6_RULE_START_FACT===268289&&M6_FORWARD_TARGET===268290,"M6 forward must start from frozen №268290 after fact №268289");
-ok(M6_TTL===150,"M6 repeat-family TTL must be exactly 150 future draws");
-ok(familyOf("173")==="137"&&familyOf("713")==="137"&&familyOf("137")==="137","M6 family must ignore digit order");
-ok(familyTripleResults("137","137").has("444"),"M6 retro control family137 + family137 must produce 444");
-ok(familyTripleResults("666","444").has("000"),"M6 control family666 + family444 must produce 000");
-const preM6Records=records.filter(r=>Number(r.draw)<=268289);
-const m5At268289=computeM5ExactState(preM6Records);
-const m5Keys=new Set((m5At268289.links||[]).map(x=>`${x.sourceCode}+${x.secondCode}→${x.triple}`));
-ok(m5Keys.has("794+194→888"),"M5 control exact 794+194→888 before №268290");
-ok(m5Keys.has("084+137→111"),"M5 control exact 084+137→111 before №268290");
-for(const id of [268261,268270,268287,268288])ok((m5At268289.occupied||[]).includes(id),`M5 EXCLUSIVE occupied must include №${id}`);
-ok(!(m5At268289.occupied||[]).includes(268289),"current fact №268289=444 must not be exact-occupied for M6 №268290");
-const m6At268289=computeM6RepeatFamily(preM6Records);
-ok(m6At268289.current?.sourceId===268289&&m6At268289.current?.targetId===268290,"M6 control must issue after №268289 for №268290");
-ok((m6At268289.current?.triples||[]).join("/")==="000","M6 frozen №268290 must be exactly 000");
-const active666=(m6At268289.current?.active||[]).find(x=>x.family==="666");
-ok(active666?.activeUntil===268320,"active family666 must stay live through №268320");
-ok(m6At268289.current?.currentBlocked===false,"fact444 must pass M5 EXCLUSIVE for M6 №268290");
-ok((m6At268289.history||[]).every(x=>x.targetId>=268290),"M6 history must not retroactively create forecasts before №268290");
+ok(M6_V3_RULE_CODE==="TOP3-M6-REPEAT-FAMILY-150-V3-STRICT-20.09.2026","M6 V3 strict rule code");
+ok(M6_V3_WINDOW===150,"M6 V3 must use exactly sliding window150");
+ok(M6_V3_FORWARD_START_SOURCE_ID===268327,"M6 V3 forward must start from fact №268327");
+ok(m6Family("173")==="137"&&m6Family("713")==="137"&&m6Family("371")==="137"&&m6Family("137")==="137","M6 V3 family must ignore digit order");
+const self137=m6SelfResults("137");
+ok(self137.triples.includes("444"),"M6 V3 retro control family137 + family137 must produce 444");
+ok(new Set(self137.triples).size===self137.triples.length,"M6 V3 XXX forecast must be deduplicated");
+ok(self137.paths.some(x=>x==="137+317→444"),"M6 V3 journal must preserve permutation paths");
+
+const mk=(draw,combo)=>({draw,date:"2026-09-20",time:"00:00",combo});
+const n1=computeM6V3Strict({records:[mk(268327,"173")]});
+ok(n1.current?.count===1&&!n1.current?.trigger&&n1.current?.triples?.length===0,"M6 V3 first family appearance must be NO SIGNAL");
+const n2=computeM6V3Strict({records:[mk(268327,"173"),mk(268328,"713")]});
+ok(n2.current?.count===2&&!n2.current?.trigger&&n2.current?.triples?.length===0,"M6 V3 second family appearance must be NO SIGNAL");
+const n3=computeM6V3Strict({records:[mk(268327,"173"),mk(268328,"713"),mk(268329,"137")]});
+ok(n3.current?.count===3&&n3.current?.trigger,"M6 V3 third family appearance must trigger");
+ok(n3.current?.triples?.includes("444"),"M6 V3 third family137 appearance must freeze 444 one-shot");
+ok(n3.current?.targetId===268330,"M6 V3 signal must target only the next draw");
+const n4=computeM6V3Strict({records:[mk(268327,"173"),mk(268328,"713"),mk(268329,"137"),mk(268330,"371")]});
+ok(n4.current?.count===4&&n4.current?.trigger,"M6 V3 fourth family appearance must trigger again");
+const hitAfter137=computeM6V3Strict({records:[mk(268327,"173"),mk(268328,"713"),mk(268329,"137"),mk(268330,"444")]});
+ok(hitAfter137.current?.prevCheck?.startsWith("✅ HIT 444"),"M6 V3 must check old Frozen before calculating the new fact");
+
+const slide=[mk(268327,"173"),mk(268328,"713")];
+for(let id=268329;id<=268476;id++)slide.push(mk(id,"000"));
+slide.push(mk(268477,"371"));
+const slid=computeM6V3Strict({records:slide});
+ok(slid.current?.windowSize===150,"M6 V3 current window must be exactly 150 when enough facts exist");
+ok(slid.current?.count===2&&!slid.current?.trigger,"M6 V3 must forget family occurrences that left window150");
+ok(!("activeUntil" in (slid.current||{})),"M6 V3 must not contain active_until state");
+
+const family012two=computeM6V3Strict({records:[mk(268327,"021"),mk(268328,"210")]});
+ok(family012two.current?.family==="012"&&family012two.current?.count===2&&!family012two.current?.trigger,"M6 V3 family012 second appearance must stay NO SIGNAL");
 
 const seedRecords=records.filter(r=>Number(r.draw)<=TRIPLE_CHAT_SEED_ID);
 const seedTriple=computeTripleChat(seedRecords,fullArchive);
@@ -114,10 +127,10 @@ ok((triple.snapshot?.m3||[]).every(x=>x.stage===1||x.stage===2),"M3 lives only 1
 ok(Array.isArray(triple.snapshot?.serialLeaders),"serial leaders must be exposed in snapshot");
 ok((triple.snapshot?.birthsWindow||[]).every(x=>Array.isArray(x.additionBirths)),"birth audit must expose addition-only births");
 
-const m6=computeM6RepeatFamily(records);
+const m6=computeM6V3Strict({records,fullArchive});
 console.log("CHAT MASTER target",target,"MASTER",f.master?.combos,"families",f.master?.families);
 console.log("TRIPLES",triple.snapshot?.frozen,"leader",triple.snapshot?.leader?.leaders,"×",triple.snapshot?.leader?.max,"serial",triple.snapshot?.serialLeaders);
-console.log("M6",m6.current?.sourceId,"→",m6.current?.targetId,m6.current?.triples,"active",m6.current?.active?.map(x=>`${x.family}@${x.activeUntil}`));
+console.log("M6 V3",m6.current?.sourceId,"family",m6.current?.family,"N",m6.current?.count,"trigger",m6.current?.trigger,"→",m6.current?.targetId,m6.current?.triples,"prev",m6.current?.prevCheck);
 console.log("ALL-LINKS",currentAllLinks.anchor?.code,"start",currentAllLinks.start?.date,currentAllLinks.start?.time,"ranking",currentAllLinks.ranking?.map(x=>`${x.rank}:${x.triple}=${x.count} ${x.share.toFixed(1)}% src${x.sourceCount} dst${x.recipientCount} avg${x.avgLag==null?"—":x.avgLag.toFixed(2)} max${x.maxLag??"—"}`).join(" | "));
 if(fail.length){console.error("STRICT CONTROL FAILED");fail.forEach(x=>console.error("-",x));process.exit(1)}
-console.log("CHAT MASTER + M1/M2/M3 + serial leader + M4 + M6 V2 strict invariants: OK");
+console.log("CHAT MASTER + M1/M2/M3 + serial leader + M4 + M6 V3 STRICT invariants: OK");
