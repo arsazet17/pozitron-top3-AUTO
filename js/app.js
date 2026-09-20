@@ -20,7 +20,7 @@ function toast(s){const x=document.querySelector("#toast");if(!x)return;x.textCo
 function isStandalone(){return window.matchMedia?.("(display-mode: standalone)")?.matches||window.navigator.standalone===true}
 function setupInstall(){
   const btn=document.querySelector("#installBtn");if(!btn)return;
-  const sync=()=>{btn.hidden=isStandalone()};
+  const sync=()=>{btn.hidden=isStandalone()||!deferredInstallPrompt};
   window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;sync()});
   window.addEventListener("appinstalled",()=>{deferredInstallPrompt=null;btn.hidden=true;toast("TOP-3 установлен")});
   btn.onclick=async()=>{
@@ -28,7 +28,7 @@ function setupInstall(){
     if(deferredInstallPrompt){
       const p=deferredInstallPrompt;deferredInstallPrompt=null;await p.prompt();try{await p.userChoice}catch{}sync();return;
     }
-    toast("На телефоне: меню браузера ⋮ → «Установить приложение» / «Добавить на главный экран»");
+    btn.hidden=true;
   };
   sync();
 }
