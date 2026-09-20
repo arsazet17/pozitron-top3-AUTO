@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#09111f">
+  <title>TOP-3 Analyzer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="../assets/icon.png">
+  <link rel="apple-touch-icon" href="../assets/icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="app-avatar" src="../assets/icon.png" alt="TOP-3 777">
+      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.6.0</div></div>
+    </div>
+
+    <nav class="nav primary-nav">
+      <button class="active" data-tab="methods"><span class="nav-icon">🧩</span><span>Методы</span></button>
+      <button data-tab="repeats"><span class="nav-icon">🔁</span><span>Повторы 150</span></button>
+      <button data-tab="beacon"><span class="nav-icon">🚨</span><span>Маячок</span><span class="nav-dot" id="beaconNavDot"></span></button>
+      <button data-tab="archive"><span class="nav-icon">📚</span><span>Архив прогнозов</span></button>
+      <button data-tab="leaders"><span class="nav-icon">🏆</span><span>Статистика лидеров</span></button>
+    </nav>
+
+    <div class="side-actions">
+      <button id="themeBtn">Светлая / тёмная</button>
+      <button id="syncNowBtn">🔄 Обновить архив сейчас</button>
+      <label class="auto-sync-label"><input type="checkbox" id="autoSyncToggle" checked><span>Автозагрузка включена</span></label>
+      <button id="exportBtn">Экспорт backup</button>
+      <label class="file-btn">Импорт backup<input type="file" id="importInput" accept="application/json,.json"></label>
+      <button id="resetBtn">Сбросить к базе</button>
+    </div>
+  </aside>
+
+  <section class="content">
+    <header class="topbar">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="top-meta">Последний факт: <b id="currentFact">—</b></div>
+      <div class="top-meta">Следующий: <b id="nextDraw">—</b></div>
+      <div class="sync-top idle" id="syncTopStatus">AUTO…</div>
+    </header>
+
+    <main class="main">
+      <section class="view active" id="methods">
+        <div class="page-head">
+          <div><div class="kicker">Рабочий экран</div><h2>Методы M1–M6</h2></div>
+          <div class="status-pill">Anti‑leakage включён</div>
+        </div>
+
+        <div class="hero">
+          <div class="card frozen-card latest-result-card">
+            <div class="kicker">Результат последнего тиража</div>
+            <div class="big-signal latest-result" id="lastResult">—</div>
+            <div class="muted" id="lastResultMeta">Автоматически из официального архива.</div>
+          </div>
+          <div class="card frozen-card next-frozen-card">
+            <div class="kicker">Итоговый Frozen на следующий тираж</div>
+            <div class="big-signal" id="finalFrozen">—</div>
+            <div class="muted" id="finalFrozenTarget">Рассчитывается автоматически после загрузки факта.</div>
+          </div>
+        </div>
+
+        <div class="section-title"><h2>Текущие сигналы</h2></div>
+        <div class="method-grid">
+          <div class="method"><span>M1 · Mirror gate</span><b id="m1Card">—</b></div>
+          <div class="method"><span>M2 · Окна</span><b id="m2Card">—</b></div>
+          <div class="method"><span>M3 · 15 фактов</span><b id="m3Card">—</b></div>
+          <div class="method"><span>M4 · Семейные связи</span><b id="m4Card">—</b></div>
+          <div class="method"><span>M5 · BURST</span><b id="m5Card">—</b></div>
+          <div class="method accent-method"><span>M6 V3 · Repeat family150</span><b id="m6Card">—</b></div>
+        </div>
+
+        <div class="detail-grid">
+          <div class="card">
+            <div class="section-title compact"><div><div class="kicker">M6 V3 STRICT</div><h3>3-й и последующие повторы family</h3></div></div>
+            <div class="m6-grid">
+              <div class="metric"><span>Текущая family</span><b id="m6Family">—</b></div>
+              <div class="metric"><span>Появлений /150</span><b id="m6Count">—</b></div>
+              <div class="metric"><span>Триггер 3+</span><b id="m6Trigger">—</b></div>
+              <div class="metric"><span>M6 сигнал</span><b id="m6Result">—</b></div>
+            </div>
+            <h4>Появления family в окне150</h4><div id="m6Occurrences"></div>
+            <h4>Пути family + family → XXX</h4><div id="m6Paths"></div>
+          </div>
+          <div class="card"><div class="section-title compact"><h3>Последний цикл проверки</h3></div><div id="auditBox"></div></div>
+        </div>
+
+        <div class="card rules-mini">
+          <details><summary>Краткие правила методов</summary>
+            <div class="rules-columns">
+              <div><b>M1/M3</b><p>Exact-order XXX блокирует пару; иначе перестановки. M1 через mirror-history gate, M3 — предыдущие15.</p></div>
+              <div><b>M2</b><p>Фиксированные family-пары, окно15, ready-сигнал живёт2 факта.</p></div>
+              <div><b>M4</b><p>Цикл от фактической тройни до следующей; все family-связи и лидеры.</p></div>
+              <div><b>M5</b><p>Exact-схлопывания, окно50; BURST ≥6, MAIN/RESERVE по типам.</p></div>
+              <div><b>M6 V3</b><p>Окно150; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="view" id="repeats">
+        <div class="page-head"><div><div class="kicker">Основа M6 V3 STRICT</div><h2>Повторы family · 150 тиражей</h2></div><div class="repeat-summary" id="repeatSummary">—</div></div>
+        <div class="repeat-cards">
+          <div class="card"><div class="kicker">Текущее окно</div><div class="repeat-big" id="repeatWindow">—</div><div class="muted">Ровно последние 150 фактических тиражей.</div></div>
+          <div class="card"><div class="kicker">Family с 2+ появлениями</div><div class="repeat-big" id="repeat2Count">—</div><div class="muted">На 2-м повторе M6 ещё не срабатывает.</div></div>
+          <div class="card"><div class="kicker">Family с 3+ появлениями</div><div class="repeat-big" id="repeat3Count">—</div><div class="muted">Каждый новый повтор такой family снова запускает M6.</div></div>
+          <div class="card current-repeat-card"><div class="kicker">Текущая family</div><div class="repeat-big" id="repeatCurrent">—</div><div class="muted" id="repeatCurrentStatus">—</div></div>
+        </div>
+        <div class="card repeat-toolbar">
+          <div class="repeat-filters" id="repeatFilters"><button class="active" data-repeat-filter="all">Все 2+</button><button data-repeat-filter="two">Только 2 раза</button><button data-repeat-filter="hot">3+ повторов</button></div>
+          <div class="field repeat-search"><label>Найти family</label><input id="repeatSearch" inputmode="numeric" maxlength="3" placeholder="например 137"></div>
+        </div>
+        <div class="table-wrap repeat-table"><table><thead><tr><th>Family</th><th>Повторов /150</th><th>Статус</th><th>Последний</th><th>Появления в окне150</th><th>Интервалы</th><th>family + family → XXX</th></tr></thead><tbody id="repeatBody"></tbody></table></div>
+        <div class="card repeat-note"><b>Строгое правило M6:</b> 1-е и 2-е появление family — без сигнала. 3-е, 4-е и каждое последующее появление этой же family в текущем окне150 — триггер. Складывается только family сама с собой через перестановки; в прогноз идут только XXX.</div>
+      </section>
+
+      <section class="view" id="beacon">
+        <div class="page-head"><div><div class="kicker">Отдельный прогноз на тройню</div><h2>🚨 Маячок · M5</h2></div><div class="beacon-head-status" id="beaconHeadStatus">—</div></div>
+        <div class="beacon-hero card" id="beaconHero">
+          <div class="beacon-lighthouse-wrap"><img src="../assets/icon.png" class="beacon-avatar" alt="Маячок TOP-3 777"><span class="beacon-pulse" id="beaconPulse"></span></div>
+          <div class="beacon-copy"><div class="kicker">M5 · BURST-6/5</div><div class="beacon-title" id="beaconTitle">—</div><div class="beacon-sub" id="beaconSub">—</div></div>
+          <div class="beacon-next"><span>Прогноз на тираж</span><b id="beaconNext">—</b></div>
+        </div>
+        <div class="beacon-m5-summary">
+          <div class="card beacon-metric"><span>Точных связей</span><b id="beaconM5Total">0</b></div>
+          <div class="card beacon-metric"><span>Типов троен</span><b id="beaconM5Types">0</b></div>
+          <div class="card beacon-metric"><span>BURST ≥ 6</span><b id="beaconM5Burst">НЕТ</b></div>
+          <div class="card beacon-metric"><span>Уровень M5</span><b id="beaconM5Level">NO SIGNAL</b></div>
+        </div>
+        <div class="beacon-grid"><div class="card"><div class="section-title compact"><h3>Основание M5</h3></div><div id="beaconReasons" class="beacon-reasons"></div></div><div class="card"><div class="section-title compact"><h3>Тройни в найденных связях</h3></div><div id="beaconTypes" class="beacon-type-list"></div></div></div>
+        <div class="card beacon-links-card"><div class="section-title compact"><h3>Точные схлопывания в окне M5</h3><span class="muted">второй участник — в последних 5 тиражах</span></div><div id="beaconLinks" class="beacon-links"></div></div>
+        <div class="card beacon-rule"><b>Что означает Маячок:</b> это отдельный прогноз метода M5 только на сам факт появления тройни <span class="mono">000 / 111 / … / 999</span> в следующем тираже. Он не смешивается с M1–M4/M6 и не прогнозирует обычную трёхзначную комбинацию.</div>
+      </section>
+
+      <section class="view" id="archive">
+        <div class="page-head"><div><div class="kicker">Контроль без утечки</div><h2>Архив прогнозов</h2></div><div class="archive-summary" id="archiveSummary">—</div></div>
+        <div class="sync-panel card">
+          <div class="sync-panel-head"><div><div class="kicker">Автоматическая выгрузка фактов</div><h3>Stoloto → GitHub → TOP‑3 Analyzer</h3></div><div class="sync-status idle" id="syncStatus">Готов к проверке</div></div>
+          <div class="sync-metrics">
+            <div><span>Источник</span><b id="syncSource">—</b></div><div><span>Фактов в полном архиве</span><b id="fullArchiveCount">—</b></div><div><span>Локально последний</span><b id="syncLocalLatest">—</b></div><div><span>В источнике последний</span><b id="syncRemoteLatest">—</b></div><div><span>Добавлено в последнюю синхронизацию</span><b id="syncAdded">0</b></div><div><span>Успешная проверка</span><b id="syncLastAt">—</b></div><div><span>Источник обновлён</span><b id="syncRemoteAt">—</b></div>
+          </div>
+          <div class="sync-note"><b>AUTO:</b> официальный reader обновляет GitHub в <b>:05</b> и <b>:35</b> каждого часа. Приложение проверяет лёгкий latest.json, а полный archive.json загружает только когда появился новый тираж. Каждый пропущенный факт проходит через методы строго по одному: Frozen ДО → проверка → обучение → новый Frozen.</div>
+        </div>
+        <div class="card archive-info"><div><span>Окно</span><b>Последние 20 тиражей</b></div><div><span>Порядок</span><b>Frozen ДО → факт → проверка → Frozen после</b></div></div>
+        <div class="table-wrap archive-table"><table><thead><tr><th>№</th><th>Дата</th><th>Время</th><th>Факт</th><th>Frozen ДО</th><th>Проверка</th><th>Frozen после</th></tr></thead><tbody id="archiveBody"></tbody></table></div>
+        <div class="section-title factual-head"><div><div class="kicker">Полный фактический архив</div><h2>Все тиражи TOP‑3</h2></div><div class="facts-search-wrap"><input id="factsArchiveSearch" placeholder="Найти № тиража, дату или комбинацию"></div></div>
+        <div class="archive-summary facts-summary" id="factsArchiveSummary">—</div>
+        <div class="table-wrap full-facts-table"><table><thead><tr><th>№</th><th>Дата</th><th>Время</th><th>Комбинация</th></tr></thead><tbody id="factsArchiveBody"></tbody></table></div>
+      </section>
+
+      <section class="view" id="leaders">
+        <div class="page-head"><div><div class="kicker">Новые рождения + M6</div><h2>Статистика лидеров</h2></div><div class="leader-hero" id="leaderHero">—</div></div>
+        <div class="leader-cards"><div class="card"><div class="kicker">Лидер новых birth · 20</div><div class="leader-big" id="leader20Main">—</div><div class="muted" id="leader20Window">—</div></div><div class="card"><div class="kicker">M6 · самый частый за 5</div><div class="leader-big" id="m6Leader5">—</div></div><div class="card"><div class="kicker">M6 · самый частый за 10</div><div class="leader-big" id="m6Leader10">—</div></div><div class="card"><div class="kicker">M6 · самый частый за 20</div><div class="leader-big" id="m6Leader20">—</div></div></div>
+        <div class="detail-grid leaders-grid"><div class="card"><div class="section-title compact"><h3>Новые рождения · последние 20</h3></div><div id="leaderBars"></div></div><div class="card"><div class="section-title compact"><h3>M6 · частота сигналов</h3></div><div id="m6LeaderStats"></div></div></div>
+        <div class="section-title"><h2>Сравнение XXX по окнам</h2></div>
+        <div class="table-wrap"><table class="leader-table"><thead><tr><th>XXX</th><th>Birth20</th><th>M6 · 5</th><th>M6 · 10</th><th>M6 · 20</th><th>Статус</th></tr></thead><tbody id="leaderTableBody"></tbody></table></div>
+      </section>
+    </main>
+  </section>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
