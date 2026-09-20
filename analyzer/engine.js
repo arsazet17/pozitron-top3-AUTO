@@ -126,7 +126,8 @@ export function hydrateSeed(seed){
 export function processFact(appState, fact){
   const S=structuredClone(appState), ms=S.methodState;
   const current={...fact,combo:String(fact.combo).padStart(3,'0')};
-  const oldFinal=[...(ms.currentForecast?.FINAL||[])];
+  const oldForecast=ms.currentForecast||{};
+  const oldFinal=uniqueOrder([...(oldForecast.M1||[]),...(oldForecast.M2_ready||[]),...(oldForecast.M3||[]),...(oldForecast.serial_leader||[]),...(oldForecast.M6_REPEAT_FAMILY_150||[])]);
   const oldM6=[...(ms.currentForecast?.M6_REPEAT_FAMILY_150||[])];
   const check=oldFinal.includes(current.combo)?'HIT':oldFinal.length?'MISS':'NO SIGNAL';
   const m6Check=oldM6.includes(current.combo)?'HIT':oldM6.length?'MISS':'NO SIGNAL';
@@ -237,10 +238,10 @@ export function processFact(appState, fact){
   const m3Signals=uniqueOrder(ms.m3Live.map(x=>x.triple));
   const serialSignals=uniqueOrder(ms.serialActive.map(x=>x.triple));
   const core=uniqueOrder([...m1Signals,...m2Signals,...m3Signals,...serialSignals]);
-  const final=uniqueOrder([...core,...(m4.leaders||[]),...m6.signal]);
+  const final=uniqueOrder([...core,...m6.signal]);
   const nxt=add30(current.date,current.time);
   ms.currentForecast={draw:current.draw+1,date:nxt.date,time:nxt.time,M1:m1Signals,M2_ready:m2Signals,M3:m3Signals,serial_leader:serialSignals,
-    M4_leaders:[...(m4.leaders||[])],M5_BURST:m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL',M6_REPEAT_FAMILY_150:m6.signal,FINAL_CORE:core,FINAL:final,
+    M4_leaders:[...(m4.leaders||[])],M4_IN_FINAL:false,M5_BURST:m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL',M6_REPEAT_FAMILY_150:m6.signal,FINAL_CORE:core,FINAL:final,
     status:final.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
 
   const result=check==='HIT'?'✅ HIT':check==='MISS'?'❌ мимо':'сигнала не было';
