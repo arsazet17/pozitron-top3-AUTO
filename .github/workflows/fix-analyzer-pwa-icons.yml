@@ -1,6 +1,6 @@
 name: Fix Analyzer PWA icons
 
-# Valid PNG source repaired; this revision regenerates installable icons.
+# Regenerate proper PWA icons and refresh install metadata/cache.
 on:
   push:
     branches: [main]
@@ -24,11 +24,28 @@ jobs:
           convert assets/top3-777-original.png -filter Lanczos -resize 192x192! assets/top3-777-192.png
           convert assets/top3-777-original.png -filter Lanczos -resize 512x512! assets/top3-777-512.png
           identify assets/top3-777-192.png assets/top3-777-512.png
-      - name: Commit generated icons
+      - name: Refresh Analyzer install metadata
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('analyzer/index.html')
+          s=p.read_text()
+          s=s.replace('manifest.webmanifest?v=062-final-2129','manifest.webmanifest?v=062-pwa-install-2355')
+          s=s.replace('<link rel="icon" href="../assets/top3-777-original.png?v=062-final-2129">','<link rel="icon" type="image/png" sizes="192x192" href="../assets/top3-777-192.png?v=062-pwa-install-2355">')
+          s=s.replace('<link rel="apple-touch-icon" href="../assets/top3-777-original.png?v=062-final-2129">','<link rel="apple-touch-icon" sizes="192x192" href="../assets/top3-777-192.png?v=062-pwa-install-2355">')
+          p.write_text(s)
+          Path('analyzer/sw.js').write_text("""const CACHE='top3-analyzer-v0.6.2-pwa-install-2355';
+const ASSETS=['./','./index.html','./styles.css?v=062-final-2129','./app.js?v=062-final-2129','./engine.js','./seed.json','./manifest.webmanifest?v=062-pwa-install-2355','../assets/top3-777-original.png?v=062-pwa-install-2355','../assets/top3-777-192.png?v=062-pwa-install-2355','../assets/top3-777-512.png?v=062-pwa-install-2355'];
+self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.pathname.includes('/data/')){e.respondWith(fetch(e.request,{cache:'no-store'}).catch(()=>caches.match(e.request)));return}e.respondWith(fetch(e.request,{cache:'no-store'}).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request)))})
+""")
+          PY
+      - name: Commit PWA fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/top3-777-192.png assets/top3-777-512.png
+          git add assets/top3-777-192.png assets/top3-777-512.png analyzer/index.html analyzer/sw.js
           git diff --cached --quiet && exit 0
-          git commit -m "Generate valid 192px and 512px Analyzer PWA icons"
+          git commit -m "Make TOP-3 Analyzer installable on Android"
           git push
