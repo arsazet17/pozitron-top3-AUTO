@@ -1,0 +1,30 @@
+name: Patch Analyzer install links
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-analyzer-install.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Analyzer HTML
+        run: |
+          sed -i 's/manifest.webmanifest?v=062-final-2129/manifest.webmanifest?v=062-pwa-install-2355/g' analyzer/index.html
+          sed -i 's#<link rel="icon" href="../assets/top3-777-original.png?v=062-final-2129">#<link rel="icon" type="image/png" sizes="192x192" href="../assets/top3-777-192.png?v=062-pwa-install-2355">#g' analyzer/index.html
+          sed -i 's#<link rel="apple-touch-icon" href="../assets/top3-777-original.png?v=062-final-2129">#<link rel="apple-touch-icon" sizes="192x192" href="../assets/top3-777-192.png?v=062-pwa-install-2355">#g' analyzer/index.html
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analyzer/index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Refresh Analyzer install metadata links"
+          git push
