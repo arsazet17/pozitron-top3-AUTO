@@ -2,6 +2,7 @@ import {card,esc} from "../ui.js";
 import {computeTripleChat,TRIPLE_CHAT_RULE_CODE,SERIAL_LEADER_TTL} from "../engine/triples-chat.js";
 import {computeTripleAllLinks,computeAllLinksForRows,ALL_LINKS_RULE_CODE} from "../engine/triple-all-links.js";
 import {computeTripleBeacon,TRIPLE_BEACON_RULE_CODE} from "../engine/triple-beacon.js";
+import {computeM6V3Strict,M6_V3_RULE_CODE} from "../engine/m6-v3-strict.js";
 
 function isRepeated(c){return /^([0-9])\1\1$/.test(String(c||""))}
 function fmtList(a){return a&&a.length?a.join(" / "):"—"}
@@ -28,6 +29,12 @@ function repeatFamilies150(ctx,limit=150){
 function repeatFamilies150Html(x){
  const rows=(x.rows||[]).map((r,i)=>`<tr><td>${i+1}</td><td><b>family${esc(r.family)}</b></td><td><b>${esc(r.count)}</b></td><td>${esc(Math.max(0,r.count-1))}</td><td>${esc(r.positions.join(", "))}</td><td>${esc(r.draws.map(n=>`№${n}`).join(", "))}</td><td>${esc(r.codes.join(" / "))}</td></tr>`).join("");
  return `<p class="muted"><b>Окно:</b> последние ${esc(x.total)}/150 фактических тиражей${x.fromDraw!=null?` · №${esc(x.fromDraw)}…№${esc(x.toDraw)}`:""}. Показываются только семьи, которые встретились минимум 2 раза. Позиция 1 = самый старый тираж окна, позиция ${esc(x.total||150)} = самый новый.</p><div class="table-wrap"><table><thead><tr><th>№</th><th>Семья</th><th>Выходов</th><th>Повторов</th><th>Позиции в окне</th><th>Тиражи</th><th>Комбинации</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Повторных семей в текущем окне нет.</td></tr>'}</tbody></table></div>`;
+}
+function m6V3Html(x){
+ const r=x?.current;if(!r)return `<p class="muted">M6 V3 forward начнётся с факта №268327 → target №268328.</p>`;
+ const paths=r.paths?.length?r.paths.join(" · "):"—";
+ const rows=(x.rows||[]).slice(-20).reverse().map(q=>`<tr><td>№${esc(q.sourceId)}</td><td>${esc(q.date)}<br><b>${esc(q.time)}</b></td><td><b>${esc(q.fact)}</b><br>family${esc(q.family)}</td><td>${esc(q.count)}</td><td>${esc(q.appearances.map((id,i)=>`${i+1}:№${id}`).join(" · "))}</td><td>${q.trigger?"ДА":"НЕТ"}</td><td><b>${esc(q.triples?.length?q.triples.join(" / "):"—")}</b><br>→ №${esc(q.targetId)}</td><td>${esc(q.prevCheck)}</td></tr>`).join("");
+ return `<div class="kpi" style="font-size:26px">${esc(r.triples?.length?r.triples.join(" / "):"— NO SIGNAL")}</div><div class="muted">one-shot на №${esc(r.targetId)} · current family${esc(r.family)} · N=${esc(r.count)} в окне ${esc(r.windowSize)}/150 · ${r.trigger?"TRIGGER":"NO TRIGGER"}</div><p><b>Появления:</b> ${esc(r.appearances.map((id,i)=>`${i+1}-е №${id}`).join(" · "))}</p><p><b>XXX:</b> ${esc(r.triples?.length?r.triples.join(" / "):"—")} · <b>пути:</b> ${esc(paths)}</p><div class="table-wrap"><table><thead><tr><th>№ факт</th><th>Дата / время</th><th>Факт / family</th><th>N</th><th>Появления</th><th>Trigger</th><th>M6 Frozen</th><th>Проверка предыдущего</th></tr></thead><tbody>${rows}</tbody></table></div><p class="muted">Только current_family + current_family через все уникальные перестановки mod10; сохраняются только XXX. 1-е и 2-е появление = NO SIGNAL; 3-е и каждое последующее в текущем скользящем окне150 = trigger. V1/V2 не используются. M6 считается отдельно и не входит в CORE/M4. Код: ${esc(M6_V3_RULE_CODE)}.</p>`;
 }
 function tripleStats(ctx){
  const full=ctx.fullArchive,combos=full?.combos||[];const stats=Array.from({length:10},(_,d)=>({triple:`${d}${d}${d}`,count:0,lastDraw:null,gap:null}));
@@ -68,7 +75,7 @@ function m4Fallback(ctx,allLinks,baseCore){
 }
 
 export function renderTriples(ctx){
- const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive);
+ const calc=computeTripleChat(ctx.records,ctx.fullArchive),s=calc.snapshot,allLinks=computeTripleAllLinks(ctx.records),beacon=computeTripleBeacon(ctx.fullArchive),m6=computeM6V3Strict(ctx);
  if(!s)return card("🔮 ТРОЙНИ · M1 / M2 / M3","<p>Недостаточно фактических данных для расчёта.</p>");
  const stats=tripleStats(ctx),facts=lastTripleFacts(ctx),L=s.leader,repeats150=repeatFamilies150(ctx);
  const leader=L.leaders.length?`${L.leaders.join(" / ")} ×${L.max}`:"—";
@@ -92,6 +99,7 @@ export function renderTriples(ctx){
  </div>
  ${card("📜 АРХИВ ПРОГНОЗОВ ЗА ПОСЛЕДНИЕ 20 ТИРАЖЕЙ",`${archiveHtml(s)}<p class="muted">Факт → Frozen ДО → проверка → Frozen после.</p>`)}
  ${card("🔁 ПОВТОРНЫЕ СЕМЬИ · ПОСЛЕДНИЕ 150 ТИРАЖЕЙ",repeatFamilies150Html(repeats150))}
+ ${card("🧬 M6 · THIRD+ REPEAT FAMILY / 150 · V3 STRICT",m6V3Html(m6))}
  ${card("🏆 ТАБЛИЦА ЛИДЕРОВ ОТ ТРОЙНИ · ВСЕ СВЯЗИ",allLinksHtml(allLinks))}
  ${card("📊 ЛИДЕР ПО ЧАСТОТЕ · БЕЗ ДУБЛЯЖЕЙ · ПОСЛЕДНИЕ 20",`${frequencyHtml(s.frequency,L.leaders)}<p class="muted">Считаются только новые рождения. Продление 1/2 → 2/2 второй раз не считается; M1+M3 из одного source = одно рождение; открытое окно M2 не считается; package→000 = одно рождение 000.</p>`)}
  ${card("🧩 ПАКЕТ ПОДРЯД → 000",`<p><b>${esc(pkg)}</b></p><p class="muted">Если подряд идущие исходные комбинации дают разные XXX-тройки, отдельные XXX заменяются итоговым 000 с фиксацией участвовавших исходников.</p>`)}
