@@ -1,7 +1,7 @@
 import {hydrateSeed,processFact,computeM5ForNext,computeM6Strict,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.3', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.6.4', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json'};
 let state=null,fullArchive=[],busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +10,7 @@ const ruDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))?String(s).split('-').r
 const isoDate=s=>/^\d{2}\.\d{2}\.\d{4}$/.test(String(s||''))?String(s).split('.').reverse().join('-'):String(s||'');
 const norm=x=>{if(!x)return null;const combo=String(x.combo??((x.A!=null&&x.B!=null&&x.C!=null)?`${x.A}${x.B}${x.C}`:'')).padStart(3,'0'),draw=Number(x.draw),time=String(x.time||'').slice(0,5);if(!Number.isInteger(draw)||!/^\d{3}$/.test(combo)||!/^\d{2}:\d{2}$/.test(time))return null;return{draw,date:ruDate(x.date),time,combo}};
 const fetchJSON=async url=>{const r=await fetch(`${url}${url.includes('?')?'&':'?'}v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()};
-const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
+const save=()=>{}; // archive/state stays in repository; do not duplicate it into quota-limited localStorage
 const autoOn=()=>localStorage.getItem(AUTO)!=='0';
 const lf=()=>state?.facts?.at(-1)||null;
 const fc=()=>state?.methodState?.currentForecast||{FINAL:[]};
@@ -40,8 +40,9 @@ function countsThrough(draw){const c={};for(const x of fullArchive){if(x.draw>dr
 function setStatus(kind,msg){state.syncMeta??={};state.syncMeta.status=kind;state.syncMeta.message=msg;save();renderSync()}
 
 async function boot(){
-  const saved=localStorage.getItem(KEY);
-  if(saved){state=JSON.parse(saved)}else{const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)}
+  // Always rebuild working state from seed + canonical remote archive. Old localStorage snapshots can exceed browser quota.
+  try{localStorage.removeItem(KEY)}catch{}
+  const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)
   stripM4FromFinal();state.appVersion=VER;state.syncMeta??={};save();
   try{const rows=await fetchJSON(REMOTE.archive);mergeArchive(rows)}catch{mergeArchive(state.facts)}
   render();setupTimer();
