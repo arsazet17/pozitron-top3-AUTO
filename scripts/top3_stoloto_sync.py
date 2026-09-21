@@ -1,246 +1,161 @@
 #!/usr/bin/env python3
-import asyncio
+import base64
 import json
-import os
 import re
 import sys
-from datetime import datetime, timezone
+import urllib.request
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from playwright.async_api import async_playwright
-
-LOGIN_URL = "https://oauth.stoloto.ru/login"
-LANDING_PAGE = "https://m.stoloto.ru/top3/archive/"
-INFO_API = "https://m.stoloto.ru/p/api/mobile/api/v35/service/games/info-new"
-CURRENT_GAME = "top-3"
-OUT = Path("/tmp/top3_official_tail.json")
-ARCHIVE_FILE = Path("data/archive.json")
+OUT = Path('/tmp/top3_official_tail.json')
+ARCHIVE_FILE = Path('data/archive.json')
 TAIL_SIZE = 60
-SCHEDULE = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (25, 55)]
+SCHEDULE = [f'{hour:02d}:{minute:02d}' for hour in range(24) for minute in (25, 55)]
 SCHEDULE_SET = set(SCHEDULE)
-MOSCOW = ZoneInfo("Europe/Moscow")
-
-# Одноразовый мост на смене продукта `top3` -> активный `top-3`.
-# После попадания этих фактов в data/archive.json они больше не используются.
-TRANSITION_BRIDGE = {
-    267960: {"draw": 267960, "date": "2026-09-12", "time": "19:55", "combo": "178"},
-    267961: {"draw": 267961, "date": "2026-09-12", "time": "20:25", "combo": "038"},
-}
+YULIA_CONTENTS = 'https://api.github.com/repos/arsazet17/pozitron-top3-v1.0/contents/top3-live.json?ref=main'
+YULIA_RAW = 'https://raw.githubusercontent.com/arsazet17/pozitron-top3-v1.0/main/top3-live.json'
+UA = 'TOP3-Analyzer-Sync/0.6.4'
 
 
 def valid_row(row):
     return (
         isinstance(row, dict)
-        and isinstance(row.get("draw"), int)
-        and row["draw"] >= 100000
-        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(row.get("date", "")))
-        and row.get("time") in SCHEDULE_SET
-        and re.fullmatch(r"\d{3}", str(row.get("combo", "")))
+        and isinstance(row.get('draw'), int)
+        and row['draw'] >= 100000
+        and re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(row.get('date', '')))
+        and row.get('time') in SCHEDULE_SET
+        and re.fullmatch(r'\d{3}', str(row.get('combo', '')))
     )
 
 
-def parse_epoch_moscow(value):
+def get_json(url):
+    req = urllib.request.Request(url, headers={
+        'Accept': 'application/vnd.github+json, application/json',
+        'User-Agent': UA,
+        'Cache-Control': 'no-cache',
+    })
+    with urllib.request.urlopen(req, timeout=25) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
+def fetch_verified_live():
+    errors = []
     try:
-        seconds = float(value)
+        wrapper = get_json(YULIA_CONTENTS)
+        encoded = str(wrapper.get('content') or '').replace('\n', '')
+        if encoded:
+            payload = json.loads(base64.b64decode(encoded).decode('utf-8'))
+            return payload, 'GitHub API direct'
+    except Exception as exc:
+        errors.append(f'contents: {exc}')
+    try:
+        return get_json(YULIA_RAW), 'GitHub RAW fallback'
+    except Exception as exc:
+        errors.append(f'raw: {exc}')
+    raise RuntimeError('Yulia TOP-3 live source unavailable: ' + ' | '.join(errors))
+
+
+def yulia_row(raw):
+    try:
+        draw = int(raw.get('id'))
+        dd, mm, yy = str(raw.get('date')).split('.')
+        date = f'20{yy}-{mm}-{dd}'
+        time = str(raw.get('time'))
+        vals = [int(raw.get('a')), int(raw.get('b')), int(raw.get('c'))]
+        if any(v < 0 or v > 9 for v in vals):
+            return None
+        row = {'draw': draw, 'date': date, 'time': time, 'combo': ''.join(map(str, vals))}
     except Exception:
         return None
-    if seconds > 10_000_000_000:
-        seconds /= 1000.0
-    dt = datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone(MOSCOW)
-    return {"date": dt.strftime("%Y-%m-%d"), "time": dt.strftime("%H:%M")}
-
-
-def combo_from(raw):
-    if not isinstance(raw, dict):
-        return None
-    c = raw.get("combination")
-    nums = None
-    if isinstance(c, dict):
-        nums = c.get("structured") or c.get("serialized")
-    if nums is None:
-        nums = raw.get("winningCombination")
-    if not isinstance(nums, list) or len(nums) < 3:
-        return None
-    try:
-        vals = [int(nums[i]) for i in range(3)]
-    except Exception:
-        return None
-    if any(n < 0 or n > 9 for n in vals):
-        return None
-    return "".join(str(n) for n in vals)
-
-
-def completed_to_row(raw):
-    if not isinstance(raw, dict):
-        return None
-    dt, combo = parse_epoch_moscow(raw.get("date")), combo_from(raw)
-    try:
-        draw = int(raw.get("number"))
-    except Exception:
-        return None
-    row = {"draw": draw, "date": dt["date"], "time": dt["time"], "combo": combo} if dt and combo else None
     return row if valid_row(row) else None
 
 
 def load_local_rows():
-    data = json.loads(ARCHIVE_FILE.read_text(encoding="utf-8"))
-    out = []
+    data = json.loads(ARCHIVE_FILE.read_text(encoding='utf-8'))
+    rows = []
     for x in data if isinstance(data, list) else []:
         try:
             row = {
-                "draw": int(x.get("draw")),
-                "date": str(x.get("date")),
-                "time": str(x.get("time")),
-                "combo": str(x.get("combo")),
+                'draw': int(x.get('draw')),
+                'date': str(x.get('date')),
+                'time': str(x.get('time')),
+                'combo': str(x.get('combo')),
             }
         except Exception:
             continue
         if valid_row(row):
-            out.append(row)
-    out.sort(key=lambda x: x["draw"])
-    if not out:
-        raise RuntimeError("Local TOP-3 archive has no valid numbered rows")
-    return out
+            rows.append(row)
+    rows.sort(key=lambda r: r['draw'])
+    if not rows:
+        raise RuntimeError('Local TOP-3 archive has no valid numbered rows')
+    return rows
 
 
-async def login(page, email, password):
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    user = password_box = None
-    for sel in (
-        'input[type="email"]', 'input[name*="email" i]', 'input[name*="login" i]',
-        'input[autocomplete="username"]', 'input[type="text"]',
-    ):
-        loc = page.locator(sel).first
-        if await loc.count():
-            user = loc
-            break
-    for sel in ('input[type="password"]', 'input[name*="password" i]', 'input[autocomplete="current-password"]'):
-        loc = page.locator(sel).first
-        if await loc.count():
-            password_box = loc
-            break
-    if user is None or password_box is None:
-        raise RuntimeError(f"OAuth fields not found; url={page.url}")
-    await user.fill(email)
-    await password_box.fill(password)
-    btn = page.get_by_role("button", name=re.compile("войти", re.I)).first
-    if not await btn.count():
-        btn = page.locator('button[type="submit"]').first
-    if not await btn.count():
-        raise RuntimeError("OAuth submit button not found")
-    await btn.click()
-    try:
-        await page.wait_for_load_state("domcontentloaded", timeout=20000)
-    except Exception:
-        pass
-    await page.wait_for_timeout(1800)
-    if "oauth.stoloto.ru/login" in page.url and await page.locator('input[type="password"]').count():
-        raise RuntimeError("Stoloto OAuth login did not complete")
+def build_tail(local_rows, live_payload):
+    source = str(live_payload.get('source') or '')
+    if 'официальный API Столото' not in source:
+        raise RuntimeError(f'Unexpected live source: {source!r}')
 
+    live_rows = [r for r in (yulia_row(x) for x in live_payload.get('draws', [])) if r]
+    if not live_rows:
+        raise RuntimeError('Yulia TOP-3 live source contains no valid draws')
 
-async def browser_json(page, url):
-    result = await page.evaluate(
-        """async (url) => {
-          try {
-            const r = await fetch(url, {method:'GET', credentials:'include'});
-            const text = await r.text();
-            return {ok:r.ok,status:r.status,url:r.url,text};
-          } catch (e) {
-            return {ok:false,status:0,url:String(url),text:'',error:String(e)};
-          }
-        }""",
-        url,
-    )
-    if not result.get("ok"):
-        raise RuntimeError(f"Browser API HTTP {result.get('status')}: {result.get('url')} {result.get('error','')}")
-    try:
-        return json.loads(result.get("text") or "")
-    except Exception as exc:
-        raise RuntimeError(f"Browser API returned non-JSON: {exc}")
+    by_live = {r['draw']: r for r in live_rows}
+    live_latest = max(by_live)
+    declared_latest = int(live_payload.get('latest') or live_latest)
+    if declared_latest != live_latest:
+        raise RuntimeError(f'Live header/draw mismatch: header №{declared_latest}, draws №{live_latest}')
 
+    local_no = local_rows[-1]['draw']
+    if live_latest < local_no:
+        raise RuntimeError(f'Live source behind local archive: LIVE №{live_latest}, LOCAL №{local_no}')
 
-async def fetch_info_latest(page):
-    payload = await browser_json(page, INFO_API)
-    games = payload.get("games") if isinstance(payload, dict) else None
-    if not isinstance(games, list):
-        raise RuntimeError("games/info-new: field games is missing")
-    game = next((x for x in games if isinstance(x, dict) and x.get("name") == CURRENT_GAME), None)
-    if not game or game.get("active") is not True:
-        raise RuntimeError("Active TOP-3 object `top-3` not found in games/info-new")
-    row = completed_to_row(game.get("completedDraw"))
-    if not row:
-        raise RuntimeError("games/info-new did not return a valid current TOP-3 completedDraw")
-    return row
+    # Anti-leak / integrity: overlapping recent facts must be identical.
+    local_map = {r['draw']: r for r in local_rows[-80:]}
+    for n, live in by_live.items():
+        old = local_map.get(n)
+        if old and old != live:
+            raise RuntimeError(f'Conflict №{n}: local={old} live={live}')
 
+    merged = {r['draw']: r for r in local_rows}
+    for n in range(local_no + 1, live_latest + 1):
+        row = by_live.get(n)
+        if not row:
+            raise RuntimeError(f'Verified live tail missing required №{n}; nothing written')
+        merged[n] = row
 
-def build_tail(local_rows, official_latest):
-    local_no = local_rows[-1]["draw"]
-    if official_latest["draw"] < local_no:
-        raise RuntimeError(f"Active feed behind local archive: LOCAL №{local_no}, API №{official_latest['draw']}")
-
-    merged = {r["draw"]: r for r in local_rows}
-    if official_latest["draw"] > local_no:
-        for n in range(local_no + 1, official_latest["draw"] + 1):
-            row = official_latest if n == official_latest["draw"] else TRANSITION_BRIDGE.get(n)
-            if not row:
-                raise RuntimeError(
-                    f"Missed №{n}; active info-new exposes only the latest completed draw. "
-                    "Nothing written: verified bridge/detail source required."
-                )
-            merged[n] = row
-
-    # Старый датированный архив исторически содержит ранние пропуски, поэтому
-    # непрерывность проверяем только на рабочем хвосте, который отдаём update.mjs.
     rows = [merged[n] for n in sorted(merged)]
     tail = rows[-TAIL_SIZE:]
     if len(tail) < 3:
-        raise RuntimeError(f"Only {len(tail)} valid rows available")
+        raise RuntimeError(f'Only {len(tail)} valid rows available')
     for i in range(1, len(tail)):
-        if tail[i]["draw"] != tail[i-1]["draw"] + 1:
-            raise RuntimeError(f"Non-contiguous live tail near №{tail[i-1]['draw']} -> №{tail[i]['draw']}")
-    return tail
+        if tail[i]['draw'] != tail[i - 1]['draw'] + 1:
+            raise RuntimeError(f"Non-contiguous tail №{tail[i-1]['draw']} -> №{tail[i]['draw']}")
+    return tail, local_no, live_latest
 
 
-async def main():
-    email = os.getenv("STOLOTO_EMAIL", "").strip()
-    password = os.getenv("STOLOTO_PASSWORD", "").strip()
-    if not email or not password:
-        raise RuntimeError("Set STOLOTO_EMAIL and STOLOTO_PASSWORD secrets")
-
+def main():
     local_rows = load_local_rows()
-    local_no = local_rows[-1]["draw"]
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            ctx = await browser.new_context(locale="ru-RU", timezone_id="Europe/Moscow", viewport={"width":1280,"height":900})
-            page = await ctx.new_page()
-            await login(page, email, password)
-            await page.goto(LANDING_PAGE, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(900)
-            official_latest = await fetch_info_latest(page)
-        finally:
-            await browser.close()
-
-    tail = build_tail(local_rows, official_latest)
-    OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload, transport = fetch_verified_live()
+    tail, local_no, live_latest = build_tail(local_rows, payload)
+    OUT.write_text(json.dumps(tail, ensure_ascii=False, indent=2), encoding='utf-8')
+    newest = tail[-1]
     print(
-        f"OFFICIAL ACTIVE TOP-3 OK: latest №{official_latest['draw']} "
-        f"{official_latest['date']} {official_latest['time']}={official_latest['combo']}; local №{local_no}; tail={len(tail)}"
+        f"VERIFIED YULIA/STOLOTO TAIL OK via {transport}: "
+        f"local №{local_no}; live №{live_latest} {newest['date']} {newest['time']}={newest['combo']}; "
+        f"source={payload.get('source')}; updatedAt={payload.get('updatedAt')}; tail={len(tail)}"
     )
 
 
 def self_test():
-    assert CURRENT_GAME == "top-3"
-    assert len(SCHEDULE) == 48 and SCHEDULE[0] == "00:25" and SCHEDULE[-1] == "23:55"
-    assert TRANSITION_BRIDGE[267960]["combo"] == "178"
-    assert TRANSITION_BRIDGE[267961]["combo"] == "038"
-    assert combo_from({"combination":{"structured":[0,3,8,1,2,7,3,0,3,9,4,9]}}) == "038"
-    print("SELF-TEST OK · active game=top-3 · incremental info-new sync · :25/:55")
+    assert len(SCHEDULE) == 48 and SCHEDULE[0] == '00:25' and SCHEDULE[-1] == '23:55'
+    assert yulia_row({'id': 268389, 'date': '21.09.26', 'time': '18:25', 'a': 0, 'b': 8, 'c': 9}) == {
+        'draw': 268389, 'date': '2026-09-21', 'time': '18:25', 'combo': '089'
+    }
+    print('SELF-TEST OK · Yulia verified full archive bridge · :25/:55')
 
 
-if __name__ == "__main__":
-    if "--self-test" in sys.argv:
+if __name__ == '__main__':
+    if '--self-test' in sys.argv:
         self_test()
     else:
-        asyncio.run(main())
+        main()
