@@ -1,0 +1,46 @@
+name: Fix analyzer storage quota
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-analyzer-storage-quota.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Stop persisting archive state in localStorage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('analyzer/app.js')
+          s=p.read_text(encoding='utf-8')
+          old="const save=()=>localStorage.setItem(KEY,JSON.stringify(state));"
+          new="const save=()=>{}; // archive/state stays in repository; do not duplicate it into quota-limited localStorage"
+          if old not in s:
+              raise SystemExit('save() marker not found')
+          s=s.replace(old,new,1)
+          old_boot="  const saved=localStorage.getItem(KEY);\n  if(saved){state=JSON.parse(saved)}else{const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)}"
+          new_boot="  // Always rebuild working state from seed + canonical remote archive. Old localStorage snapshots can exceed browser quota.\n  try{localStorage.removeItem(KEY)}catch{}\n  const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)"
+          if old_boot not in s:
+              raise SystemExit('boot marker not found')
+          s=s.replace(old_boot,new_boot,1)
+          s=s.replace("const VER='0.6.3'","const VER='0.6.4'",1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add analyzer/app.js
+          git commit -m 'Analyzer v0.6.4: keep archive out of localStorage'
+          git pull --rebase origin main
+          git push origin HEAD:main
