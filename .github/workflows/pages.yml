@@ -1,14 +1,9 @@
-name: TOP-3 Analyzer · Pages
+name: TOP-3 AUTO · Pages
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "analyzer/**"
-      - "assets/**"
-      - "data/**"
-      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
