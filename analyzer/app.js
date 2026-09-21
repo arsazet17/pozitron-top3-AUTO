@@ -1,9 +1,9 @@
 import {hydrateSeed,processFact,computeM5ForNext,computeM6Strict,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.2', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.6.3', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json'};
-let state=null,fullArchive=[],busy=false,timer=null,repeatFilter='all',lastAudit=null;
+let state=null,fullArchive=[],busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sig=a=>a?.length?a.join(' / '):'—';
 const ruDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))?String(s).split('-').reverse().join('.'):String(s||'');
@@ -14,6 +14,18 @@ const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
 const autoOn=()=>localStorage.getItem(AUTO)!=='0';
 const lf=()=>state?.facts?.at(-1)||null;
 const fc=()=>state?.methodState?.currentForecast||{FINAL:[]};
+
+function pollSlot(now=new Date()){
+  const startMinute=now.getMinutes()<30?0:30;
+  const start=new Date(now);start.setMinutes(startMinute,0,0);
+  const elapsed=now-start;
+  const active=elapsed>=0&&elapsed<10*60*1000;
+  const pad=n=>String(n).padStart(2,'0');
+  const key=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(startMinute)}`;
+  const minuteKey=`${key}-${pad(now.getMinutes())}`;
+  return{active,key,minuteKey,start};
+}
+function remoteUpdatedForSlot(updatedAt,slot){if(!updatedAt||!slot?.active)return false;const d=new Date(updatedAt);return !Number.isNaN(d.getTime())&&d>=slot.start}
 
 function stripM4FromFinal(){
   const f=state?.methodState?.currentForecast;if(!f)return;
@@ -32,18 +44,25 @@ async function boot(){
   if(saved){state=JSON.parse(saved)}else{const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)}
   stripM4FromFinal();state.appVersion=VER;state.syncMeta??={};save();
   try{const rows=await fetchJSON(REMOTE.archive);mergeArchive(rows)}catch{mergeArchive(state.facts)}
-  render();setupTimer();sync(false).catch(()=>{});
+  render();setupTimer();
 }
 
 async function sync(manual=false){
-  if(busy)return;busy=true;
+  if(busy)return false;busy=true;
   try{
-    setStatus('working',manual?'Обновляю сейчас…':'Проверка обновлений…');
+    const slot=pollSlot();
+    setStatus('working',manual?'Обновляю сейчас…':'Проверка обновления архива…');
     const lp=await fetchJSON(REMOTE.latest),remote=norm(lp.draw||lp.latest||lp);
     if(!remote)throw Error('latest.json: неверный формат');
     state.syncMeta.remoteLatest=remote;state.syncMeta.remoteUpdatedAt=lp.updatedAt||null;
     const localNo=Number(lf()?.draw||0);
-    if(remote.draw<=localNo){state.syncMeta.lastAdded=0;state.syncMeta.lastSuccessAt=new Date().toISOString();setStatus('ok','Архив актуален');render();return}
+    if(remote.draw<=localNo){
+      const slotReady=remoteUpdatedForSlot(lp.updatedAt,slot);
+      if(slotReady)completedPollSlot=slot.key;
+      state.syncMeta.lastAdded=0;state.syncMeta.lastSuccessAt=new Date().toISOString();
+      setStatus(slot.active&&!slotReady?'working':'ok',slot.active&&!slotReady?'Архив ещё не обновился · повтор через 1 мин':'Архив актуален');
+      render();return slotReady;
+    }
     const rows=await fetchJSON(REMOTE.archive);if(!Array.isArray(rows))throw Error('archive.json: неверный формат');
     mergeArchive(rows);
     const by=new Map(fullArchive.map(x=>[x.draw,x]));
@@ -51,11 +70,24 @@ async function sync(manual=false){
     const missing=[];for(let n=localNo+1;n<=remote.draw;n++){const r=by.get(n);if(!r)throw Error(`Пропущен №${n} в удалённом архиве`);missing.push(r)}
     let comboCounts=countsThrough(localNo),added=0;
     for(const fact of missing){state.mirrorExactCounts={...comboCounts};const res=processFact(state,fact);state=res.state;lastAudit=res.audit;comboCounts[fact.combo]=(comboCounts[fact.combo]||0)+1;added++}
-    stripM4FromFinal();state.mirrorExactCounts={...comboCounts};state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;save();setStatus('ok',`Загружено: ${added} · до №${remote.draw}`);render();
-  }catch(e){state.syncMeta.lastError=String(e.message||e);setStatus('error',`Ошибка AUTO: ${e.message||e}`)}finally{busy=false;renderSync()}
+    stripM4FromFinal();state.mirrorExactCounts={...comboCounts};state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;
+    if(slot.active&&added>0)completedPollSlot=slot.key;
+    save();setStatus('ok',`Загружено: ${added} · до №${remote.draw}`);render();return added>0;
+  }catch(e){state.syncMeta.lastError=String(e.message||e);setStatus('error',`Ошибка AUTO: ${e.message||e}`);return false}finally{busy=false;renderSync()}
 }
 
-function setupTimer(){if(timer)clearInterval(timer);if(autoOn())timer=setInterval(()=>sync(false),120000)}
+async function scheduledPoll(){
+  if(!autoOn()||busy||!state)return;
+  const slot=pollSlot();
+  if(!slot.active){
+    if(state.syncMeta?.message!=='Ожидание обновления в :00 / :30'){state.syncMeta??={};state.syncMeta.status='idle';state.syncMeta.message='Ожидание обновления в :00 / :30';save();renderSync()}
+    return;
+  }
+  if(completedPollSlot===slot.key||lastPollMinuteKey===slot.minuteKey)return;
+  lastPollMinuteKey=slot.minuteKey;
+  await sync(false);
+}
+function setupTimer(){if(timer)clearInterval(timer);lastPollMinuteKey='';if(autoOn()){scheduledPoll();timer=setInterval(scheduledPoll,15000)}}
 function render(){stripM4FromFinal();renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
 function renderMain(){
   const x=lf(),f=fc(),m5=computeM5ForNext(state.facts),m6=computeM6Strict(state.facts);
@@ -77,7 +109,7 @@ function renderBeacon(){const m=computeM5ForNext(state.facts),f=fc(),types=Objec
 function renderArchive(){const rows=(state.archive20||[]).slice().reverse();$('#archiveSummary').textContent=`${rows.length} последних проверок`;$('#archiveBody').innerHTML=rows.map(r=>`<tr><td>№${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><b class="mono">${r[3]}</b></td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join('');renderFullArchive()}
 function renderFullArchive(){const q=($('#factsArchiveSearch')?.value||'').trim().toLowerCase();let rows=fullArchive.filter(x=>!q||String(x.draw).includes(q)||x.combo.includes(q)||x.date.includes(q));const n=rows.length;rows=rows.slice(-150).reverse();$('#factsArchiveBody').innerHTML=rows.map(x=>`<tr><td>№${x.draw}</td><td>${x.date}</td><td>${x.time}</td><td><b class="mono">${x.combo}</b></td></tr>`).join('')||'<tr><td colspan="4">Ничего не найдено</td></tr>';$('#factsArchiveSummary').textContent=`Всего ${fullArchive.length.toLocaleString('ru-RU')} · найдено ${n.toLocaleString('ru-RU')} · показано ${rows.length}`}
 function when(x){try{return new Date(x).toLocaleString('ru-RU')}catch{return'—'}}
-function renderSync(){if(!state)return;const m=state.syncMeta||{},local=lf(),remote=m.remoteLatest;$('#syncSource').textContent='Stoloto → GitHub AUTO';$('#syncLocalLatest').textContent=local?`№${local.draw} · ${local.combo}`:'—';$('#syncRemoteLatest').textContent=remote?`№${remote.draw} · ${remote.combo}`:'—';$('#syncAdded').textContent=m.lastAdded??0;$('#syncLastAt').textContent=m.lastSuccessAt?when(m.lastSuccessAt):'—';$('#syncRemoteAt').textContent=m.remoteUpdatedAt?when(m.remoteUpdatedAt):'—';$('#fullArchiveCount').textContent=fullArchive.length.toLocaleString('ru-RU');['syncStatus','syncTopStatus'].forEach(id=>{const e=$('#'+id);if(e){e.textContent=m.message||(autoOn()?'AUTO включён':'AUTO выключен');e.className=(id==='syncStatus'?'sync-status ':'sync-top ')+(m.status||'idle')}});if($('#autoSyncToggle'))$('#autoSyncToggle').checked=autoOn()}
+function renderSync(){if(!state)return;const m=state.syncMeta||{},local=lf(),remote=m.remoteLatest;$('#syncSource').textContent='Stoloto → GitHub AUTO';$('#syncLocalLatest').textContent=local?`№${local.draw} · ${local.combo}`:'—';$('#syncRemoteLatest').textContent=remote?`№${remote.draw} · ${remote.combo}`:'—';$('#syncAdded').textContent=m.lastAdded??0;$('#syncLastAt').textContent=m.lastSuccessAt?when(m.lastSuccessAt):'—';$('#syncRemoteAt').textContent=m.remoteUpdatedAt?when(m.remoteUpdatedAt):'—';$('#fullArchiveCount').textContent=fullArchive.length.toLocaleString('ru-RU');['syncStatus','syncTopStatus'].forEach(id=>{const e=$('#'+id);if(e){e.textContent=m.message||(autoOn()?'AUTO включён':'AUTO выключен');e.className=(id==='syncStatus'?'sync-status ':'sync-top ')+(m.status||'idle')}});if($('#autoSyncToggle'))$('#autoSyncToggle').checked=autoOn();const note=$('.sync-note');if(note)note.innerHTML='<b>AUTO:</b> архив обновляется каждые 30 минут — в <b>:00</b> и <b>:30</b>. После каждого контрольного времени приложение проверяет обновление <b>раз в минуту</b> и прекращает запросы сразу после получения нового архива; если обновление задержалось, проверки продолжаются не более <b>10 минут</b>.'}
 
 function m6Counts(n){const c=Object.fromEntries(TARGETS.map(t=>[t,0]));analyzeM6Window(state.facts,n).forEach(r=>r.signal.forEach(t=>c[t]++));return c}
 function top(c){const mx=Math.max(...Object.values(c));return mx?`${TARGETS.filter(t=>c[t]===mx).join(' / ')} · ${mx}`:'—'}
@@ -90,6 +122,6 @@ if(localStorage.getItem('top3-theme')==='light')document.documentElement.classLi
 $('#resetBtn')?.addEventListener('click',()=>{if(confirm('Сбросить локальное состояние и заново синхронизировать?')){localStorage.removeItem(KEY);location.reload()}});
 $('#exportBtn')?.addEventListener('click',()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({state},null,2)],{type:'application/json'}));a.download=`TOP3_backup_${lf()?.draw||'state'}.json`;a.click()});
 $('#importInput')?.addEventListener('change',async e=>{try{const d=JSON.parse(await e.target.files[0].text());state=d.state||d;stripM4FromFinal();save();render()}catch(err){alert('Ошибка backup: '+err.message)}e.target.value=''});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&autoOn())sync(false)});window.addEventListener('online',()=>{if(autoOn())sync(false)});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&autoOn())scheduledPoll()});window.addEventListener('online',()=>{if(autoOn())scheduledPoll()});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 boot();
