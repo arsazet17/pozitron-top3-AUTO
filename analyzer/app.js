@@ -1,9 +1,13 @@
-import {hydrateSeed,processFact,computeM5ForNext,computeM6Strict,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
+import {hydrateSeed,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
+import {computeTripleChat} from '../js/engine/triples-chat.js';
+import {computeTripleAllLinks} from '../js/engine/triple-all-links.js';
+import {computeTripleBeacon} from '../js/engine/triple-beacon.js';
+import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.4', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
-const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json'};
-let state=null,fullArchive=[],busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
+const VER='0.6.5', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json',full:'../data/full-archive/all.json'};
+let state=null,fullArchive=[],fullCore=null,authoritative=null,busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sig=a=>a?.length?a.join(' / '):'—';
 const ruDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))?String(s).split('-').reverse().join('.'):String(s||'');
@@ -13,7 +17,52 @@ const fetchJSON=async url=>{const r=await fetch(`${url}${url.includes('?')?'&':'
 const save=()=>{}; // archive/state stays in repository; do not duplicate it into quota-limited localStorage
 const autoOn=()=>localStorage.getItem(AUTO)!=='0';
 const lf=()=>state?.facts?.at(-1)||null;
-const fc=()=>state?.methodState?.currentForecast||{FINAL:[]};
+const fc=()=>authoritative?.forecast||state?.methodState?.currentForecast||{FINAL:[]};
+
+const uniq=a=>[...new Set((a||[]).filter(Boolean))];
+function completeFullArchive(){
+  if(!fullCore)return null;
+  const baseCombos=Array.isArray(fullCore.combos)?[...fullCore.combos]:(typeof fullCore.data==='string'?(fullCore.data.match(/.{3}/g)||[]):[]);
+  const from=Number(fullCore.fromDraw||0),baseTo=Number(fullCore.toDraw||0);
+  const tail=fullArchive.filter(x=>x.draw>baseTo).sort((a,b)=>a.draw-b.draw);
+  for(const r of tail){const expected=from+baseCombos.length;if(r.draw===expected)baseCombos.push(r.combo)}
+  return {...fullCore,combos:baseCombos,toDraw:from+baseCombos.length-1,total:baseCombos.length};
+}
+function nextSlot(last){
+  if(!last)return{draw:null,date:'',time:''};
+  const [dd,mm,yyyy]=String(last.date).split('.').map(Number),[hh,mi]=String(last.time).split(':').map(Number);
+  const d=new Date(yyyy,mm-1,dd,hh,mi+30,0,0),pad=n=>String(n).padStart(2,'0');
+  return{draw:Number(last.draw)+1,date:`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,time:`${pad(d.getHours())}:${pad(d.getMinutes())}`};
+}
+function rebuildAuthoritative(){
+  const records=[...fullArchive].sort((a,b)=>a.draw-b.draw);
+  if(!records.length)return;
+  state.facts=records;
+  const full=completeFullArchive();
+  const tc=computeTripleChat(records,full),snap=tc.snapshot||{};
+  const m6calc=computeM6V3Strict({records,fullArchive:full}),m6c=m6calc.current||null;
+  const m4calc=computeTripleAllLinks(records),top=Number(m4calc?.ranking?.[0]?.count||0);
+  const m4=top?(m4calc.ranking||[]).filter(x=>Number(x.count)===top).map(x=>x.triple):[];
+  const last=records.at(-1),target=nextSlot(last);
+  const m2=uniq((snap.m2||[]).map(x=>x.triple));
+  const m3=uniq((snap.m3||[]).map(x=>x.triple));
+  const serial=uniq((snap.serialLeaders||[]).map(x=>x.triple));
+  const core=uniq(snap.frozen||[]),m6sig=uniq(m6c?.triples||[]);
+  const details={};for(const p of (m6c?.paths||[])){const m=String(p).match(/→(\d{3})$/),t=m?.[1]||'M6';(details[t]??=[]).push(p)}
+  const by=new Map(records.map(r=>[r.draw,r]));
+  const m6view=m6c?{family:m6c.family,count:m6c.count,trigger:m6c.trigger,signal:m6sig,occurrences:(m6c.appearances||[]).map(id=>by.get(id)||{draw:id,combo:''}),details}:{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}};
+  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_150:m6sig,FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
+  authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m4:m4calc,forecast};
+  state.methodState??={};state.methodState.currentForecast=forecast;
+  state.methodState.leader20={counts:{...(snap.leader?.counts||{})},leaders:[...(snap.leader?.leaders||[])],max_count:Number(snap.leader?.max||0),window:`последние 20 · до №${last.draw}`};
+  state.archive20=(snap.archive||[]).slice(-20).map(r=>[r.id,r.date,r.time,r.fact,r.before,r.check,r.after]);
+}
+function authoritativeM5(){
+  const b=computeTripleBeacon(completeFullArchive());
+  const links=(b.pairs||[]).map(x=>({source_draw:x.sourceDraw,source_combo:x.source,second_draw:x.secondDraw,second_combo:x.second,triple:x.type}));
+  return{main:false,reserve:false,burst:Boolean(b.signal),signal:Boolean(b.signal),total:links.length,links,counts:b.typeCounts||{},shared:b};
+}
+function currentM6(){return authoritative?.m6||{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}}}
 
 function pollSlot(now=new Date()){
   const startMinute=now.getMinutes()<30?0:30;
@@ -27,56 +76,35 @@ function pollSlot(now=new Date()){
 }
 function remoteUpdatedForSlot(updatedAt,slot){if(!updatedAt||!slot?.active)return false;const d=new Date(updatedAt);return !Number.isNaN(d.getTime())&&d>=slot.start}
 
-function stripM4FromFinal(){
-  const f=state?.methodState?.currentForecast;if(!f)return;
-  const core=[...(f.M1||[]),...(f.M2_ready||[]),...(f.M3||[]),...(f.serial_leader||[])];
-  f.FINAL_CORE=[...new Set(core.filter(Boolean))];
-  f.FINAL=[...new Set([...f.FINAL_CORE,...(f.M6_REPEAT_FAMILY_150||[])].filter(Boolean))];
-  f.M4_IN_FINAL=false;
-  f.status=f.FINAL.length?'FROZEN':'NO VALID NUMERIC SIGNAL';
-}
+function stripM4FromFinal(){ /* canonical Yulia core owns M1/M2/M3; M4/M6 stay separate. */ }
 function mergeArchive(rows){const m=new Map(fullArchive.map(x=>[x.draw,x]));for(const r0 of rows||[]){const r=norm(r0);if(r)m.set(r.draw,r)}fullArchive=[...m.values()].sort((a,b)=>a.draw-b.draw)}
 function countsThrough(draw){const c={};for(const x of fullArchive){if(x.draw>draw)break;c[x.combo]=(c[x.combo]||0)+1}return c}
 function setStatus(kind,msg){state.syncMeta??={};state.syncMeta.status=kind;state.syncMeta.message=msg;save();renderSync()}
 
 async function boot(){
-  // Always rebuild working state from seed + canonical remote archive. Old localStorage snapshots can exceed browser quota.
   try{localStorage.removeItem(KEY)}catch{}
-  const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed)
-  stripM4FromFinal();state.appVersion=VER;state.syncMeta??={};save();
+  const seed=await fetchJSON('./seed.json');state=hydrateSeed(seed);state.appVersion=VER;state.syncMeta??={};
+  try{fullCore=await fetchJSON(REMOTE.full)}catch{fullCore=null}
   try{const rows=await fetchJSON(REMOTE.archive);mergeArchive(rows)}catch{mergeArchive(state.facts)}
-  render();setupTimer();
+  rebuildAuthoritative();save();render();setupTimer();
 }
-
 async function sync(manual=false){
   if(busy)return false;busy=true;
   try{
-    const slot=pollSlot();
-    setStatus('working',manual?'Обновляю сейчас…':'Проверка обновления архива…');
-    const lp=await fetchJSON(REMOTE.latest),remote=norm(lp.draw||lp.latest||lp);
-    if(!remote)throw Error('latest.json: неверный формат');
+    const slot=pollSlot();setStatus('working',manual?'Обновляю сейчас…':'Проверка обновления архива…');
+    const lp=await fetchJSON(REMOTE.latest),remote=norm(lp.draw||lp.latest||lp);if(!remote)throw Error('latest.json: неверный формат');
     state.syncMeta.remoteLatest=remote;state.syncMeta.remoteUpdatedAt=lp.updatedAt||null;
     const localNo=Number(lf()?.draw||0);
-    if(remote.draw<=localNo){
-      const slotReady=remoteUpdatedForSlot(lp.updatedAt,slot);
-      if(slotReady)completedPollSlot=slot.key;
-      state.syncMeta.lastAdded=0;state.syncMeta.lastSuccessAt=new Date().toISOString();
-      setStatus(slot.active&&!slotReady?'working':'ok',slot.active&&!slotReady?'Архив ещё не обновился · повтор через 1 мин':'Архив актуален');
-      render();return slotReady;
-    }
-    const rows=await fetchJSON(REMOTE.archive);if(!Array.isArray(rows))throw Error('archive.json: неверный формат');
-    mergeArchive(rows);
-    const by=new Map(fullArchive.map(x=>[x.draw,x]));
-    for(const old of state.facts.slice(-80)){const r=by.get(Number(old.draw));if(r&&(r.combo!==old.combo||r.time!==old.time||isoDate(r.date)!==isoDate(old.date)))throw Error(`Конфликт №${old.draw}: локально ${old.combo}, источник ${r.combo}`)}
-    const missing=[];for(let n=localNo+1;n<=remote.draw;n++){const r=by.get(n);if(!r)throw Error(`Пропущен №${n} в удалённом архиве`);missing.push(r)}
-    let comboCounts=countsThrough(localNo),added=0;
-    for(const fact of missing){state.mirrorExactCounts={...comboCounts};const res=processFact(state,fact);state=res.state;lastAudit=res.audit;comboCounts[fact.combo]=(comboCounts[fact.combo]||0)+1;added++}
-    stripM4FromFinal();state.mirrorExactCounts={...comboCounts};state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;
-    if(slot.active&&added>0)completedPollSlot=slot.key;
+    if(remote.draw<=localNo){const slotReady=remoteUpdatedForSlot(lp.updatedAt,slot);if(slotReady)completedPollSlot=slot.key;state.syncMeta.lastAdded=0;state.syncMeta.lastSuccessAt=new Date().toISOString();setStatus(slot.active&&!slotReady?'working':'ok',slot.active&&!slotReady?'Архив ещё не обновился · повтор через 1 мин':'Архив актуален');render();return slotReady}
+    const oldFinal=[...(fc().FINAL||[])],oldM6=[...(fc().M6_REPEAT_FAMILY_150||[])];
+    const rows=await fetchJSON(REMOTE.archive);if(!Array.isArray(rows))throw Error('archive.json: неверный формат');mergeArchive(rows);
+    const by=new Map(fullArchive.map(x=>[x.draw,x]));for(let n=localNo+1;n<=remote.draw;n++)if(!by.get(n))throw Error(`Пропущен №${n} в удалённом архиве`);
+    const added=Math.max(0,remote.draw-localNo);rebuildAuthoritative();
+    lastAudit={oldFinal,check:oldFinal.length?(oldFinal.includes(remote.combo)?'HIT':'MISS'):'NO SIGNAL',final:[...(fc().FINAL||[])],m6:{signal:[...(fc().M6_REPEAT_FAMILY_150||[])],old:oldM6}};
+    state.appVersion=VER;state.syncMeta.lastAdded=added;state.syncMeta.lastSuccessAt=new Date().toISOString();state.syncMeta.remoteLatest=remote;if(slot.active&&added>0)completedPollSlot=slot.key;
     save();setStatus('ok',`Загружено: ${added} · до №${remote.draw}`);render();return added>0;
   }catch(e){state.syncMeta.lastError=String(e.message||e);setStatus('error',`Ошибка AUTO: ${e.message||e}`);return false}finally{busy=false;renderSync()}
 }
-
 async function scheduledPoll(){
   if(!autoOn()||busy||!state)return;
   const slot=pollSlot();
@@ -89,9 +117,9 @@ async function scheduledPoll(){
   await sync(false);
 }
 function setupTimer(){if(timer)clearInterval(timer);lastPollMinuteKey='';if(autoOn()){scheduledPoll();timer=setInterval(scheduledPoll,15000)}}
-function render(){stripM4FromFinal();renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
+function render(){renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
 function renderMain(){
-  const x=lf(),f=fc(),m5=computeM5ForNext(state.facts),m6=computeM6Strict(state.facts);
+  const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6();
   $('#version').textContent='v'+VER;$('#currentFact').textContent=x?`№${x.draw} · ${x.date} ${x.time} · ${x.combo}`:'—';$('#nextDraw').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';
   $('#lastResult').textContent=x?.combo||'—';$('#lastResultMeta').textContent=x?`№${x.draw} · ${x.date} ${x.time}`:'—';$('#finalFrozen').textContent=sig(f.FINAL);$('#finalFrozenTarget').textContent=f.draw?`На №${f.draw} · ${f.date} ${f.time}`:'—';
   [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL';
@@ -105,7 +133,7 @@ function renderMain(){
 function renderRepeats(){const a=analyzeFamilyRepeats150(state.facts),cur=a.rows.find(r=>r.current);$('#repeatWindow').textContent=a.start&&a.end?`№${a.start.draw} → №${a.end.draw}`:'—';$('#repeat2Count').textContent=a.repeat2plus;$('#repeat3Count').textContent=a.repeat3plus;$('#repeatCurrent').textContent=a.currentFamily||'—';$('#repeatCurrentStatus').textContent=`${a.currentCount} появлений /150${a.currentCount===2?' · ждём 3-й':a.currentCount>=3?' · M6 trigger':' · без сигнала'}`;$('#repeatSummary').textContent=`2+: ${a.repeat2plus} · 3+: ${a.repeat3plus}`;
   const q=($('#repeatSearch')?.value||'').trim();let rows=a.rows.filter(r=>(repeatFilter==='two'?r.count===2:repeatFilter==='hot'?r.count>=3:true)&&(!q||r.family.includes(q)));$('#repeatBody').innerHTML=rows.map(r=>`<tr class="${r.current?'current-row':''}"><td><b class="mono">${r.family}</b></td><td>${r.count}</td><td>${r.count===2?'ЖДЁМ 3-Й':'3+ АКТИВНА'}</td><td>№${r.last.draw} · ${r.last.combo}</td><td>${r.occurrences.map(o=>`№${o.draw}:${o.combo}`).join(' · ')}</td><td>${r.gaps.join(' / ')||'—'}</td><td class="mono">${sig(r.selfSignal)}</td></tr>`).join('')||'<tr><td colspan="7">Нет строк</td></tr>'}
 
-function renderBeacon(){const m=computeM5ForNext(state.facts),f=fc(),types=Object.keys(m.counts||{}).sort(),signal=m.main||m.reserve||m.burst,level=m.main?'MAIN':m.reserve?'RESERVE':m.burst?'BURST':'NO SIGNAL';$('#beaconHeadStatus').textContent=signal?'🚨 СИГНАЛ НА ТРОЙНЮ':'— НЕТ СИГНАЛА';$('#beaconTitle').textContent=signal?'ТРОЙНЯ ОЖИДАЕТСЯ':'НЕТ СИГНАЛА НА ТРОЙНЮ';$('#beaconSub').textContent=`M5 BURST‑6/5 · ${m.total} точных связей · ${types.length} типов`;$('#beaconNext').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';$('#beaconM5Total').textContent=m.total;$('#beaconM5Types').textContent=types.length;$('#beaconM5Burst').textContent=m.burst?'ДА':'НЕТ';$('#beaconM5Level').textContent=level;$('#beaconNavDot').classList.toggle('hot',signal);$('#beaconReasons').innerHTML=`<div class="reason ${signal?'good':''}"><b>${level}</b><span>${signal?'M5 разрешает отдельный сигнал на факт появления любой тройни.':'Порог M5 не достигнут — отдельного сигнала на тройню нет.'}</span></div>`;$('#beaconTypes').innerHTML=types.length?types.map(t=>`<span class="triple-chip">${t} ×${m.counts[t]}</span>`).join(''):'<span class="muted">Типов нет</span>';$('#beaconLinks').innerHTML=m.links.length?m.links.map(l=>`<div class="collapse-link"><span>№${l.source_draw} <b>${l.source_combo}</b></span><span>+</span><span>№${l.second_draw} <b>${l.second_combo}</b></span><span>→</span><strong>${l.triple}</strong></div>`).join(''):'<div class="muted">Точных связей в текущем окне нет.</div>'}
+function renderBeacon(){const m=authoritativeM5(),f=fc(),types=Object.keys(m.counts||{}).sort(),signal=m.main||m.reserve||m.burst,level=m.main?'MAIN':m.reserve?'RESERVE':m.burst?'BURST':'NO SIGNAL';$('#beaconHeadStatus').textContent=signal?'🚨 СИГНАЛ НА ТРОЙНЮ':'— НЕТ СИГНАЛА';$('#beaconTitle').textContent=signal?'ТРОЙНЯ ОЖИДАЕТСЯ':'НЕТ СИГНАЛА НА ТРОЙНЮ';$('#beaconSub').textContent=`M5 BURST‑6/5 · ${m.total} точных связей · ${types.length} типов`;$('#beaconNext').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';$('#beaconM5Total').textContent=m.total;$('#beaconM5Types').textContent=types.length;$('#beaconM5Burst').textContent=m.burst?'ДА':'НЕТ';$('#beaconM5Level').textContent=level;$('#beaconNavDot').classList.toggle('hot',signal);$('#beaconReasons').innerHTML=`<div class="reason ${signal?'good':''}"><b>${level}</b><span>${signal?'M5 разрешает отдельный сигнал на факт появления любой тройни.':'Порог M5 не достигнут — отдельного сигнала на тройню нет.'}</span></div>`;$('#beaconTypes').innerHTML=types.length?types.map(t=>`<span class="triple-chip">${t} ×${m.counts[t]}</span>`).join(''):'<span class="muted">Типов нет</span>';$('#beaconLinks').innerHTML=m.links.length?m.links.map(l=>`<div class="collapse-link"><span>№${l.source_draw} <b>${l.source_combo}</b></span><span>+</span><span>№${l.second_draw} <b>${l.second_combo}</b></span><span>→</span><strong>${l.triple}</strong></div>`).join(''):'<div class="muted">Точных связей в текущем окне нет.</div>'}
 
 function renderArchive(){const rows=(state.archive20||[]).slice().reverse();$('#archiveSummary').textContent=`${rows.length} последних проверок`;$('#archiveBody').innerHTML=rows.map(r=>`<tr><td>№${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><b class="mono">${r[3]}</b></td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join('');renderFullArchive()}
 function renderFullArchive(){const q=($('#factsArchiveSearch')?.value||'').trim().toLowerCase();let rows=fullArchive.filter(x=>!q||String(x.draw).includes(q)||x.combo.includes(q)||x.date.includes(q));const n=rows.length;rows=rows.slice(-150).reverse();$('#factsArchiveBody').innerHTML=rows.map(x=>`<tr><td>№${x.draw}</td><td>${x.date}</td><td>${x.time}</td><td><b class="mono">${x.combo}</b></td></tr>`).join('')||'<tr><td colspan="4">Ничего не найдено</td></tr>';$('#factsArchiveSummary').textContent=`Всего ${fullArchive.length.toLocaleString('ru-RU')} · найдено ${n.toLocaleString('ru-RU')} · показано ${rows.length}`}
@@ -122,7 +150,7 @@ $('#repeatSearch')?.addEventListener('input',renderRepeats);$('#factsArchiveSear
 if(localStorage.getItem('top3-theme')==='light')document.documentElement.classList.add('light');
 $('#resetBtn')?.addEventListener('click',()=>{if(confirm('Сбросить локальное состояние и заново синхронизировать?')){localStorage.removeItem(KEY);location.reload()}});
 $('#exportBtn')?.addEventListener('click',()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({state},null,2)],{type:'application/json'}));a.download=`TOP3_backup_${lf()?.draw||'state'}.json`;a.click()});
-$('#importInput')?.addEventListener('change',async e=>{try{const d=JSON.parse(await e.target.files[0].text());state=d.state||d;stripM4FromFinal();save();render()}catch(err){alert('Ошибка backup: '+err.message)}e.target.value=''});
+$('#importInput')?.addEventListener('change',async e=>{try{const d=JSON.parse(await e.target.files[0].text());state=d.state||d;rebuildAuthoritative();save();render()}catch(err){alert('Ошибка backup: '+err.message)}e.target.value=''});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&autoOn())scheduledPoll()});window.addEventListener('online',()=>{if(autoOn())scheduledPoll()});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 boot();
