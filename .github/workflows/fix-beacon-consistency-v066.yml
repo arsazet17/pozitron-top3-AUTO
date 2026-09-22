@@ -1,0 +1,28 @@
+name: Fix Beacon consistency v0.6.6
+
+on:
+  push:
+    paths:
+      - 'tools/fix-beacon-consistency-v066.py'
+      - '.github/workflows/fix-beacon-consistency-v066.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply M5 Beacon consistency fix
+        run: python3 tools/fix-beacon-consistency-v066.py
+      - name: Syntax check
+        run: node --check analyzer/app.js
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analyzer/app.js analyzer/index.html analyzer/sw.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: keep Beacon signal consistent across views"
+          git push
