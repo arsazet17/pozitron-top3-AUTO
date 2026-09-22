@@ -1,0 +1,32 @@
+name: Sync Analyzer with Yulia core
+
+on:
+  push:
+    paths:
+      - 'patch-sync-analyzer-yulia.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply shared forecast core patch
+        run: node patch-sync-analyzer-yulia.mjs
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analyzer/app.js js/engine/triples-chat.js analyzer/sw.js analyzer/index.html
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "fix: sync Analyzer forecasts with Yulia M1-M6 core"
+            git push
+          fi
