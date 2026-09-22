@@ -1,9 +1,9 @@
-const CACHE='top3-analyzer-v0.6.3-archive-poll-0030';
+const CACHE='top3-analyzer-v0.6.6-beacon-consistency';
 const ASSETS=[
   './',
   './index.html',
   './styles.css?v=063-archive-poll',
-  './app.js?v=063-archive-poll',
+  './app.js?v=066-beacon-consistency',
   './engine.js',
   './seed.json',
   './manifest.webmanifest?v=063-archive-poll',
