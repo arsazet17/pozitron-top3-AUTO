@@ -1,11 +1,11 @@
 import {hydrateSeed,analyzeM6Window,analyzeFamilyRepeats150,TARGETS} from './engine.js';
 import {computeTripleChat} from '../js/engine/triples-chat.js';
-import {computeTripleAllLinks} from '../js/engine/triple-all-links.js';
+import {computeTripleAllLinks} from '../js/engine/m4-diff-mirror-1000.js';
 import {computeTripleBeacon} from '../js/engine/triple-beacon.js';
 import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.8', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.6.9', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json',full:'../data/full-archive/all.json'};
 let state=null,fullArchive=[],fullCore=null,authoritative=null,busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -118,12 +118,37 @@ async function scheduledPoll(){
 }
 function setupTimer(){if(timer)clearInterval(timer);lastPollMinuteKey='';if(autoOn()){scheduledPoll();timer=setInterval(scheduledPoll,15000)}}
 function render(){renderMain();renderRepeats();renderBeacon();renderArchive();renderLeaders();renderSync()}
+function renderM4Detail(){
+  const box=$('#m4Detail'),m=authoritative?.m4;if(!box)return;
+  if(!m?.ok){box.innerHTML=`<div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div><div class="muted">${esc(m?.reason||'Нет данных')}</div>`;return}
+  const signals=m.signals||[];
+  const summary=signals.length?signals.map(t=>`<span class="chip"><b>${esc(t)}</b></span>`).join(' '):'<b>СИГНАЛА НЕТ.</b>';
+  const rows=(m.candidates||[]).map(c=>{
+    if(!c.found)return `<tr><td><b>${c.triple}</b></td><td colspan="6" class="muted">Нет этой тройни в последних 1000 тиражах</td></tr>`;
+    const dir=c.match?(c.diffToMirror&&c.mirrorToDiff?'Δ→зеркало / зеркало→Δ':c.diffToMirror?'Δ→зеркало':'зеркало→Δ'):'—';
+    return `<tr class="${c.match?'hit-row':''}"><td><b>${c.triple}</b></td><td>№${c.row?.id??'—'}<br><span class="muted">${esc(c.row?.date||'')} ${esc(c.row?.time||'')}</span></td><td class="mono">${esc(c.previous?.code||'—')} → ${esc(c.row?.code||'—')}</td><td class="mono"><b>${esc(c.diff||'—')}</b><br><span class="muted">family ${esc(c.diffFamily||'—')}</span></td><td class="mono"><b>${esc(c.mirror||'—')}</b><br><span class="muted">family ${esc(c.mirrorFamily||'—')}</span></td><td>${c.match?'✅ СХЛОПНУЛОСЬ':'—'}</td><td>${dir}</td></tr>`;
+  }).join('');
+  box.innerHTML=`
+    <div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div>
+    <div class="audit-grid" style="margin-bottom:1rem">
+      <div><span>Последний факт</span><b>${esc(m.latest?.code||'—')}</b><small>№${m.latest?.id??'—'}</small></div>
+      <div><span>Предыдущий</span><b>${esc(m.previous?.code||'—')}</b><small>№${m.previous?.id??'—'}</small></div>
+      <div><span>Последняя Δ</span><b>${esc(m.currentDiff||'—')}</b><small>family ${esc(m.currentDiffFamily||'—')}</small></div>
+      <div><span>Зеркало Δ</span><b>${esc(m.currentMirror||'—')}</b><small>family ${esc(m.currentMirrorFamily||'—')}</small></div>
+      <div><span>Окно</span><b>${m.windowSize||0} тиражей</b><small>№${m.windowStart?.id??'—'} → №${m.windowEnd?.id??'—'}</small></div>
+      <div><span>Итог M4</span><b>${signals.length?signals.join(' / '):'СИГНАЛА НЕТ'}</b><small>Прогнозируется тройня, чья пара Δ/зеркало схлопнулась</small></div>
+    </div>
+    <div style="margin-bottom:1rem"><b>ИТОГОВЫЙ СИГНАЛ M4:</b><div style="margin-top:.55rem">${summary}</div></div>
+    <div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Последнее появление /1000</th><th>Переход</th><th>Δ тройни</th><th>Зеркало Δ</th><th>Статус</th><th>Направление</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted" style="margin-top:1rem">Сравнение только по family: порядок цифр не важен. Проверка: последняя Δ ↔ зеркало Δ тройни или зеркало последней Δ ↔ Δ тройни. Для каждой тройни используется только её самое последнее появление внутри текущих 1000 тиражей.</div>`;
+}
+
 function renderMain(){
   const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6();
   $('#version').textContent='v'+VER;$('#currentFact').textContent=x?`№${x.draw} · ${x.date} ${x.time} · ${x.combo}`:'—';$('#nextDraw').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';
   $('#lastResult').textContent=x?.combo||'—';$('#lastResultMeta').textContent=x?`№${x.draw} · ${x.date} ${x.time}`:'—';$('#finalFrozen').textContent=sig(f.FINAL);$('#finalFrozenTarget').textContent=f.draw?`На №${f.draw} · ${f.date} ${f.time}`:'—';
   [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';
-  const m4Label=$('#m4Card')?.previousElementSibling;if(m4Label)m4Label.textContent='M4 · Итог (вне Frozen)';
+  const m4Label=$('#m4Card')?.previousElementSibling;if(m4Label)m4Label.textContent='M4 · Δ ↔ зеркало · 1000';renderM4Detail();
   $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);
   $('#m6Occurrences').innerHTML=(m6.occurrences||[]).map((o,i)=>`<span class="chip">${i+1}. №${o.draw} ${o.combo}</span>`).join(' ')||'<span class="muted">Нет</span>';
   $('#m6Paths').innerHTML=Object.entries(m6.details||{}).map(([t,p])=>`<details><summary><b>${t}</b> · ${p.length} путей</summary><div class="mono">${p.slice(0,12).map(esc).join('<br>')}</div></details>`).join('')||'<span class="muted">Нет M6-сигнала</span>';

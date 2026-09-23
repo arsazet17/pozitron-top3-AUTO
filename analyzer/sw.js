@@ -1,10 +1,11 @@
-const CACHE='top3-analyzer-v0.6.8-m7-odd500';
+const CACHE='top3-analyzer-v0.6.9-m4-diffmirror1000';
 const ASSETS=[
   './',
   './index.html',
   './styles.css?v=067-m6-1000',
-  './app.js?v=068-m7-odd500',
+  './app.js?v=069-m4-diffmirror1000',
   './m7.js?v=068-m7-odd500',
+  '../js/engine/m4-diff-mirror-1000.js',
   './engine.js?v=067-m6-1000',
   './seed.json',
   './manifest.webmanifest?v=067-m6-1000',
