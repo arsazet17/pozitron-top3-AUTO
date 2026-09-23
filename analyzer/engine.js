@@ -78,13 +78,13 @@ export function computeM5ForNext(facts){
 
 export function computeM6Strict(facts){
   const current=facts.at(-1); if(!current) return {status:'NO DATA',signal:[]};
-  const window=facts.slice(-150), f=family(current.combo);
+  const window=facts.slice(-1000), f=family(current.combo);
   const occurrences=window.filter(x=>family(x.combo)===f);
   if(occurrences.length<3){
-    return {version:'V3',window:150,family:f,count:occurrences.length,occurrences,trigger:false,signal:[],details:{},status:'NO SIGNAL'};
+    return {version:'V3',window:1000,family:f,count:occurrences.length,occurrences,trigger:false,signal:[],details:{},status:'NO SIGNAL'};
   }
   const details=familySelfDetails(f), signal=Object.keys(details).sort();
-  return {version:'V3',window:150,family:f,count:occurrences.length,occurrences,trigger:true,signal,details,status:signal.length?'SIGNAL':'NO SIGNAL'};
+  return {version:'V3',window:1000,family:f,count:occurrences.length,occurrences,trigger:true,signal,details,status:signal.length?'SIGNAL':'NO SIGNAL'};
 }
 
 function packageGroups(rawUnion){
@@ -241,7 +241,7 @@ export function processFact(appState, fact){
   const final=uniqueOrder([...core,...m6.signal]);
   const nxt=add30(current.date,current.time);
   ms.currentForecast={draw:current.draw+1,date:nxt.date,time:nxt.time,M1:m1Signals,M2_ready:m2Signals,M3:m3Signals,serial_leader:serialSignals,
-    M4_leaders:[...(m4.leaders||[])],M4_IN_FINAL:false,M5_BURST:m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL',M6_REPEAT_FAMILY_150:m6.signal,FINAL_CORE:core,FINAL:final,
+    M4_leaders:[...(m4.leaders||[])],M4_IN_FINAL:false,M5_BURST:m5.main?'MAIN':m5.reserve?'RESERVE':'NO SIGNAL',M6_REPEAT_FAMILY_1000:m6.signal,M6_REPEAT_FAMILY_150:m6.signal,FINAL_CORE:core,FINAL:final,
     status:final.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
 
   const result=check==='HIT'?'✅ HIT':check==='MISS'?'❌ мимо':'сигнала не было';
@@ -251,7 +251,7 @@ export function processFact(appState, fact){
 }
 
 export function analyzeFamilyRepeats150(facts){
-  const window=facts.slice(-150);
+  const window=facts.slice(-1000);
   const current=facts.at(-1)||null;
   const groups=new Map();
   for(const x of window){ const f=family(x.combo); if(!groups.has(f)) groups.set(f,[]); groups.get(f).push(x); }

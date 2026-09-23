@@ -10,7 +10,7 @@ function stageLabel(x){return `${x.triple} · ${x.stage}/2 ${x.stage===1?"NEW":"
 function serialLabel(x){return `${x.triple} · rem${x.rem} · серия ${x.streak}`}
 function uniqTriples(a=[]){return [...new Set((a||[]).filter(isRepeated))].sort((x,y)=>Number(x[0])-Number(y[0]))}
 function familyOf(v){const s=String(v??"").replace(/\D/g,"").padStart(3,"0").slice(-3);return s.split("").sort().join("")}
-function repeatFamilies150(ctx,limit=150){
+function repeatFamilies150(ctx,limit=1000){
  const full=ctx.fullArchive,combos=full?.combos||[];
  if(full&&combos.length){
   const total=Math.min(limit,combos.length),start=combos.length-total,map=new Map();
@@ -28,7 +28,7 @@ function repeatFamilies150(ctx,limit=150){
 }
 function repeatFamilies150Html(x){
  const rows=(x.rows||[]).map((r,i)=>`<tr><td>${i+1}</td><td><b>family${esc(r.family)}</b></td><td><b>${esc(r.count)}</b></td><td>${esc(Math.max(0,r.count-1))}</td><td>${esc(r.positions.join(", "))}</td><td>${esc(r.draws.map(n=>`№${n}`).join(", "))}</td><td>${esc(r.codes.join(" / "))}</td></tr>`).join("");
- return `<p class="muted"><b>Окно:</b> последние ${esc(x.total)}/150 фактических тиражей${x.fromDraw!=null?` · №${esc(x.fromDraw)}…№${esc(x.toDraw)}`:""}. Показываются только семьи, которые встретились минимум 2 раза. Позиция 1 = самый старый тираж окна, позиция ${esc(x.total||150)} = самый новый.</p><div class="table-wrap"><table><thead><tr><th>№</th><th>Семья</th><th>Выходов</th><th>Повторов</th><th>Позиции в окне</th><th>Тиражи</th><th>Комбинации</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Повторных семей в текущем окне нет.</td></tr>'}</tbody></table></div>`;
+ return `<p class="muted"><b>Окно:</b> последние ${esc(x.total)}/1000 фактических тиражей${x.fromDraw!=null?` · №${esc(x.fromDraw)}…№${esc(x.toDraw)}`:""}. Показываются только семьи, которые встретились минимум 2 раза. Позиция 1 = самый старый тираж окна, позиция ${esc(x.total||150)} = самый новый.</p><div class="table-wrap"><table><thead><tr><th>№</th><th>Семья</th><th>Выходов</th><th>Повторов</th><th>Позиции в окне</th><th>Тиражи</th><th>Комбинации</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Повторных семей в текущем окне нет.</td></tr>'}</tbody></table></div>`;
 }
 function m6V3Html(x){
  const r=x?.current;if(!r)return `<p class="muted">M6 V3 forward начнётся с факта №268327 → target №268328.</p>`;
@@ -37,9 +37,9 @@ function m6V3Html(x){
   const appearances=(q.appearances||[]).map((id,i)=>`${i+1}-е:№${id}`).join(" · ")||"—";
   const qpaths=q.paths?.length?q.paths.join(" · "):"—";
   const frozen=q.triples?.length?q.triples.join(" / "):"— NO SIGNAL";
-  return `<tr><td>№${esc(q.sourceId)}</td><td>${esc(q.date)}<br><b>${esc(q.time)}</b></td><td><b>${esc(q.fact)}</b><br>family${esc(q.family)}</td><td>${esc(q.windowSize)}/150</td><td><b>${esc(q.count)}</b></td><td>${esc(appearances)}</td><td>${q.trigger?"ДА":"НЕТ"}</td><td><b>${esc(q.triples?.length?q.triples.join(" / "):"—")}</b></td><td>${esc(qpaths)}</td><td>№${esc(q.targetId)} · <b>${esc(frozen)}</b></td><td>${esc(q.prevCheck)}</td></tr>`;
+  return `<tr><td>№${esc(q.sourceId)}</td><td>${esc(q.date)}<br><b>${esc(q.time)}</b></td><td><b>${esc(q.fact)}</b><br>family${esc(q.family)}</td><td>${esc(q.windowSize)}/1000</td><td><b>${esc(q.count)}</b></td><td>${esc(appearances)}</td><td>${q.trigger?"ДА":"НЕТ"}</td><td><b>${esc(q.triples?.length?q.triples.join(" / "):"—")}</b></td><td>${esc(qpaths)}</td><td>№${esc(q.targetId)} · <b>${esc(frozen)}</b></td><td>${esc(q.prevCheck)}</td></tr>`;
  }).join("");
- return `<div class="kpi" style="font-size:26px">${esc(r.triples?.length?r.triples.join(" / "):"— NO SIGNAL")}</div><div class="muted">one-shot на №${esc(r.targetId)} · current family${esc(r.family)} · N=${esc(r.count)} в окне ${esc(r.windowSize)}/150 · ${r.trigger?"TRIGGER":"NO TRIGGER"}</div><p><b>Появления current family:</b> ${esc((r.appearances||[]).map((id,i)=>`${i+1}-е №${id}`).join(" · ")||"—")}</p><p><b>XXX:</b> ${esc(r.triples?.length?r.triples.join(" / "):"—")} · <b>формулы/перестановки:</b> ${esc(paths)}</p><div class="table-wrap"><table><thead><tr><th>№ факт</th><th>Дата / время</th><th>Факт / family</th><th>Окно</th><th>N</th><th>Все появления family</th><th>Trigger</th><th>XXX</th><th>Формулы / перестановки</th><th>M6 Frozen на следующий</th><th>Проверка предыдущего M6</th></tr></thead><tbody>${rows||'<tr><td colspan="11">Forward-журнал V3 ещё пуст.</td></tr>'}</tbody></table></div><p class="muted"><b>ANTI-LEAKAGE:</b> сначала проверяется старый one-shot Frozen на пришедшем факте, только затем текущий факт входит в новое окно150 и формируется новый прогноз. Только current_family + current_family через все уникальные перестановки mod10; сохраняются только XXX. 1-е и 2-е появление = NO SIGNAL; 3-е и каждое последующее в текущем скользящем окне150 = trigger. Никакой ACTIVE family / active_until нет. V1/V2 не используются. M6 считается отдельно и не входит в CORE/M4. Код: ${esc(M6_V3_RULE_CODE)}.</p>`;
+ return `<div class="kpi" style="font-size:26px">${esc(r.triples?.length?r.triples.join(" / "):"— NO SIGNAL")}</div><div class="muted">one-shot на №${esc(r.targetId)} · current family${esc(r.family)} · N=${esc(r.count)} в окне ${esc(r.windowSize)}/1000 · ${r.trigger?"TRIGGER":"NO TRIGGER"}</div><p><b>Появления current family:</b> ${esc((r.appearances||[]).map((id,i)=>`${i+1}-е №${id}`).join(" · ")||"—")}</p><p><b>XXX:</b> ${esc(r.triples?.length?r.triples.join(" / "):"—")} · <b>формулы/перестановки:</b> ${esc(paths)}</p><div class="table-wrap"><table><thead><tr><th>№ факт</th><th>Дата / время</th><th>Факт / family</th><th>Окно</th><th>N</th><th>Все появления family</th><th>Trigger</th><th>XXX</th><th>Формулы / перестановки</th><th>M6 Frozen на следующий</th><th>Проверка предыдущего M6</th></tr></thead><tbody>${rows||'<tr><td colspan="11">Forward-журнал V3 ещё пуст.</td></tr>'}</tbody></table></div><p class="muted"><b>ANTI-LEAKAGE:</b> сначала проверяется старый one-shot Frozen на пришедшем факте, только затем текущий факт входит в новое окно1000 и формируется новый прогноз. Только current_family + current_family через все уникальные перестановки mod10; сохраняются только XXX. 1-е и 2-е появление = NO SIGNAL; 3-е и каждое последующее в текущем скользящем окне1000 = trigger. Никакой ACTIVE family / active_until нет. V1/V2 не используются. M6 считается отдельно и не входит в CORE/M4. Код: ${esc(M6_V3_RULE_CODE)}.</p>`;
 }
 function tripleStats(ctx){
  const full=ctx.fullArchive,combos=full?.combos||[];const stats=Array.from({length:10},(_,d)=>({triple:`${d}${d}${d}`,count:0,lastDraw:null,gap:null}));
@@ -103,8 +103,8 @@ export function renderTriples(ctx){
  ${card("M3 · МЕТОД 3",`<div class="kpi" style="font-size:22px">${esc(m3)}</div><div class="muted">15 предыдущих · все перестановки · 1/2 NEW → 2/2 LAST</div>`)}
  </div>
  ${card("📜 АРХИВ ПРОГНОЗОВ ЗА ПОСЛЕДНИЕ 20 ТИРАЖЕЙ",`${archiveHtml(s)}<p class="muted">Факт → Frozen ДО → проверка → Frozen после.</p>`)}
- ${card("🔁 ПОВТОРНЫЕ СЕМЬИ · ПОСЛЕДНИЕ 150 ТИРАЖЕЙ",repeatFamilies150Html(repeats150))}
- ${card("🧬 M6 · THIRD+ REPEAT FAMILY / 150 · V3 STRICT",m6V3Html(m6))}
+ ${card("🔁 ПОВТОРНЫЕ СЕМЬИ · ПОСЛЕДНИЕ 1000 ТИРАЖЕЙ",repeatFamilies150Html(repeats150))}
+ ${card("🧬 M6 · THIRD+ REPEAT FAMILY / 1000 · V3 STRICT",m6V3Html(m6))}
  ${card("🏆 ТАБЛИЦА ЛИДЕРОВ ОТ ТРОЙНИ · ВСЕ СВЯЗИ",allLinksHtml(allLinks))}
  ${card("📊 ЛИДЕР ПО ЧАСТОТЕ · БЕЗ ДУБЛЯЖЕЙ · ПОСЛЕДНИЕ 20",`${frequencyHtml(s.frequency,L.leaders)}<p class="muted">Считаются только новые рождения. Продление 1/2 → 2/2 второй раз не считается; M1+M3 из одного source = одно рождение; открытое окно M2 не считается; package→000 = одно рождение 000.</p>`)}
  ${card("🧩 ПАКЕТ ПОДРЯД → 000",`<p><b>${esc(pkg)}</b></p><p class="muted">Если подряд идущие исходные комбинации дают разные XXX-тройки, отдельные XXX заменяются итоговым 000 с фиксацией участвовавших исходников.</p>`)}

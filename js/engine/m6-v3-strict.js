@@ -1,5 +1,5 @@
-export const M6_V3_RULE_CODE="TOP3-M6-REPEAT-FAMILY-150-V3-STRICT-20.09.2026";
-export const M6_V3_WINDOW=150;
+export const M6_V3_RULE_CODE="TOP3-M6-REPEAT-FAMILY-1000-V3-STRICT-23.09.2026";
+export const M6_V3_WINDOW=1000;
 export const M6_V3_FORWARD_START_SOURCE_ID=268327;
 
 function pad(v){return String(v??"").replace(/\D/g,"").padStart(3,"0").slice(-3)}

@@ -75,7 +75,7 @@
           <div class="method"><span>M3 · 15 фактов</span><b id="m3Card">—</b></div>
           <div class="method"><span>M4 · Семейные связи</span><b id="m4Card">—</b></div>
           <div class="method"><span>M5 · BURST</span><b id="m5Card">—</b></div>
-          <div class="method accent-method"><span>M6 V3 · Repeat family150</span><b id="m6Card">—</b></div>
+          <div class="method accent-method"><span>M6 V3 · Repeat family1000</span><b id="m6Card">—</b></div>
         </div>
 
         <div class="detail-grid">
@@ -83,11 +83,11 @@
             <div class="section-title compact"><div><div class="kicker">M6 V3 STRICT</div><h3>3-й и последующие повторы family</h3></div></div>
             <div class="m6-grid">
               <div class="metric"><span>Текущая family</span><b id="m6Family">—</b></div>
-              <div class="metric"><span>Появлений /150</span><b id="m6Count">—</b></div>
+              <div class="metric"><span>Появлений /1000</span><b id="m6Count">—</b></div>
               <div class="metric"><span>Триггер 3+</span><b id="m6Trigger">—</b></div>
               <div class="metric"><span>M6 сигнал</span><b id="m6Result">—</b></div>
             </div>
-            <h4>Появления family в окне150</h4>
+            <h4>Появления family в окне1000</h4>
             <div id="m6Occurrences"></div>
             <h4>Пути family + family → XXX</h4>
             <div id="m6Paths"></div>
@@ -107,7 +107,7 @@
               <div><b>M2</b><p>Фиксированные family-пары, окно15, ready-сигнал живёт2 факта.</p></div>
               <div><b>M4</b><p>Цикл от фактической тройни до следующей; все family-связи и лидеры.</p></div>
               <div><b>M5</b><p>Exact-схлопывания, окно50; BURST ≥6, MAIN/RESERVE по типам.</p></div>
-              <div><b>M6 V3</b><p>Окно150; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>
+              <div><b>M6 V3</b><p>Окно1000; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>
             </div>
           </details>
         </div>
@@ -115,7 +115,7 @@
 
       <section class="view" id="repeats">
         <div class="page-head">
-          <div><div class="kicker">Основа M6 V3 STRICT</div><h2>Повторы family · 150 тиражей</h2></div>
+          <div><div class="kicker">Основа M6 V3 STRICT</div><h2>Повторы family · 1000 тиражей</h2></div>
           <div class="repeat-summary" id="repeatSummary">—</div>
         </div>
 
@@ -123,7 +123,7 @@
           <div class="card">
             <div class="kicker">Текущее окно</div>
             <div class="repeat-big" id="repeatWindow">—</div>
-            <div class="muted">Ровно последние 150 фактических тиражей.</div>
+            <div class="muted">Ровно последние 1000 фактических тиражей.</div>
           </div>
           <div class="card">
             <div class="kicker">Family с 2+ появлениями</div>
@@ -156,12 +156,12 @@
 
         <div class="table-wrap repeat-table">
           <table>
-            <thead><tr><th>Family</th><th>Повторов /150</th><th>Статус</th><th>Последний</th><th>Появления в окне150</th><th>Интервалы</th><th>family + family → XXX</th></tr></thead>
+            <thead><tr><th>Family</th><th>Повторов /1000</th><th>Статус</th><th>Последний</th><th>Появления в окне1000</th><th>Интервалы</th><th>family + family → XXX</th></tr></thead>
             <tbody id="repeatBody"></tbody>
           </table>
         </div>
         <div class="card repeat-note">
-          <b>Строгое правило M6:</b> 1-е и 2-е появление family — без сигнала. 3-е, 4-е и каждое последующее появление этой же family в текущем окне150 — триггер. Складывается только family сама с собой через перестановки; в прогноз идут только XXX.
+          <b>Строгое правило M6:</b> 1-е и 2-е появление family — без сигнала. 3-е, 4-е и каждое последующее появление этой же family в текущем окне1000 — триггер. Складывается только family сама с собой через перестановки; в прогноз идут только XXX.
         </div>
       </section>
 
@@ -309,6 +309,6 @@
     </main>
   </section>
 </div>
-<script type="module" src="app.js?v=066-beacon-consistency"></script>
+<script type="module" src="app.js?v=067-m6-1000"></script>
 </body>
 </html>
