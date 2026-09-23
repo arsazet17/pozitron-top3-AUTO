@@ -1,0 +1,41 @@
+name: Fix analyzer repeat nav label
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-repeat-nav-1000.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update nav label
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('analyzer/index.html')
+          s=p.read_text(encoding='utf-8')
+          old='<button data-tab="repeats"><span class="nav-icon">🔁</span><span>Повторы 150</span></button>'
+          new='<button data-tab="repeats"><span class="nav-icon">🔁</span><span>Повторы 1000</span></button>'
+          if old not in s:
+              raise SystemExit('Expected old nav label not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
+      - name: Verify
+        run: |
+          grep -q 'Повторы 1000' analyzer/index.html
+          ! grep -q 'Повторы 150' analyzer/index.html
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add analyzer/index.html
+          git commit -m 'fix: rename analyzer repeat section to 1000'
+          git pull --rebase origin main
+          git push origin main
