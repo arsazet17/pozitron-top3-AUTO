@@ -1,0 +1,81 @@
+name: Add Analyzer M7 odd triples 500
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add-m7-odd500.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch Analyzer UI and cache
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('analyzer/index.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('Методы M1–M6','Методы M1–M7')
+          s=s.replace('<div class="method"><span>M5 · BURST</span><b id="m5Card">—</b></div>',
+                      '<div class="method accent-method"><span>M7 · Нечётные тройни · 500</span><b id="m5Card">—</b></div>')
+          s=s.replace('<div><b>M5</b><p>Exact-схлопывания, окно50; BURST ≥6, MAIN/RESERVE по типам.</p></div>',
+                      '<div><b>M7</b><p>Новая X складывается семьями с ровно 500 предыдущими тиражами; учитываются только 111/333/555/777/999; сигнал только при одинаковой тройне на 2+ соседних тиражах подряд.</p></div>')
+          if 'id="m7Detail"' not in s:
+              marker='        <div class="detail-grid">'
+              block='''        <div class="card" id="m7Detail">
+          <div class="section-title compact"><div><div class="kicker">M7 · нечётные тройни</div><h3>500 предыдущих · серия 2+</h3></div></div>
+          <div class="muted">Расчёт загружается…</div>
+        </div>\n\n'''
+              if marker not in s:
+                  raise SystemExit('detail-grid marker not found')
+              s=s.replace(marker,block+marker,1)
+          if 'm7.js?v=068-m7-odd500' not in s:
+              s=s.replace('</body>','  <script type="module" src="m7.js?v=068-m7-odd500"></script>\n</body>')
+          s=re.sub(r'app\.js\?v=[^"\']+','app.js?v=068-m7-odd500',s)
+          s=s.replace('>v0.6.6<','>v0.6.8<').replace('>v0.6.7<','>v0.6.8<')
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('analyzer/app.js')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r"const VER='[^']+'", "const VER='0.6.8'", s, count=1)
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('analyzer/sw.js')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r"const CACHE='[^']+'", "const CACHE='top3-analyzer-v0.6.8-m7-odd500'", s, count=1)
+          s=re.sub(r"'\./app\.js\?v=[^']+'", "'./app.js?v=068-m7-odd500'", s)
+          if "'./m7.js?v=068-m7-odd500'" not in s:
+              target="'./app.js?v=068-m7-odd500',"
+              if target not in s:
+                  raise SystemExit('sw app.js asset marker not found')
+              s=s.replace(target,target+"\n  './m7.js?v=068-m7-odd500',",1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify strict M7 wiring
+        run: |
+          grep -q 'M7 · Нечётные тройни · 500' analyzer/index.html
+          grep -q 'id="m7Detail"' analyzer/index.html
+          grep -q 'm7.js?v=068-m7-odd500' analyzer/index.html
+          grep -q "const VER='0.6.8'" analyzer/app.js
+          grep -q 'M7_TARGETS' analyzer/m7.js
+          grep -q 'M7_WINDOW=500' analyzer/m7.js
+          node --check analyzer/m7.js
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo 'No changes'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add analyzer/index.html analyzer/app.js analyzer/sw.js
+          git commit -m 'feat: wire strict M7 odd triples 500 into Analyzer'
+          git push
