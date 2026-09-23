@@ -1,0 +1,47 @@
+name: Analyzer M4 patch retry
+
+on:
+  push:
+    paths:
+      - '.github/workflows/m4-patch-retry.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply M4 patch
+        run: python3 scripts/patch_analyzer_m4.py
+      - name: Check M4 JavaScript
+        run: |
+          node --check analyzer/app.js
+          node --check js/engine/m4-diff-mirror-1000.js
+          node --input-type=module - <<'JS'
+          import {computeM4DiffMirror1000} from './js/engine/m4-diff-mirror-1000.js';
+          const rows=[
+            {draw:1,combo:'184'},{draw:2,combo:'333'},
+            {draw:3,combo:'000'},{draw:4,combo:'851'}
+          ];
+          const r=computeM4DiffMirror1000(rows);
+          const c=r.candidates.find(x=>x.triple==='333');
+          if(r.currentDiff!=='851'||!c||c.diff!=='259'||c.mirror!=='851'||!c.match||!r.signals.includes('333')) throw new Error('M4 strict test failed');
+          console.log('M4 strict test PASS');
+          JS
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add analyzer/index.html analyzer/app.js analyzer/sw.js
+          if git diff --cached --quiet; then
+            echo 'No patch changes needed'
+            exit 0
+          fi
+          git commit -m 'feat: replace M4 with diff-mirror 1000 collapse'
+          git pull --rebase origin main
+          git push origin HEAD:main
