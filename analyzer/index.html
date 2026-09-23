@@ -18,7 +18,7 @@
   <aside class="sidebar">
     <div class="brand">
       <img class="app-avatar" src="../assets/top3-777-original.png?v=062-final-2129" alt="TOP-3 777">
-      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.6.6</div></div>
+      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.6.8</div></div>
     </div>
 
     <nav class="nav primary-nav">
@@ -50,7 +50,7 @@
     <main class="main">
       <section class="view active" id="methods">
         <div class="page-head">
-          <div><div class="kicker">Рабочий экран</div><h2>Методы M1–M6</h2></div>
+          <div><div class="kicker">Рабочий экран</div><h2>Методы M1–M7</h2></div>
           <div class="status-pill">Anti‑leakage включён</div>
         </div>
 
@@ -74,8 +74,13 @@
           <div class="method"><span>M2 · Окна</span><b id="m2Card">—</b></div>
           <div class="method"><span>M3 · 15 фактов</span><b id="m3Card">—</b></div>
           <div class="method"><span>M4 · Семейные связи</span><b id="m4Card">—</b></div>
-          <div class="method"><span>M5 · BURST</span><b id="m5Card">—</b></div>
+          <div class="method accent-method"><span>M7 · Нечётные тройни · 500</span><b id="m5Card">—</b></div>
           <div class="method accent-method"><span>M6 V3 · Repeat family1000</span><b id="m6Card">—</b></div>
+        </div>
+
+        <div class="card" id="m7Detail">
+          <div class="section-title compact"><div><div class="kicker">M7 · нечётные тройни</div><h3>500 предыдущих · серия 2+</h3></div></div>
+          <div class="muted">Расчёт загружается…</div>
         </div>
 
         <div class="detail-grid">
@@ -106,7 +111,7 @@
               <div><b>M1/M3</b><p>Exact-order XXX блокирует пару; иначе перестановки. M1 через mirror-history gate, M3 — предыдущие15.</p></div>
               <div><b>M2</b><p>Фиксированные family-пары, окно15, ready-сигнал живёт2 факта.</p></div>
               <div><b>M4</b><p>Цикл от фактической тройни до следующей; все family-связи и лидеры.</p></div>
-              <div><b>M5</b><p>Exact-схлопывания, окно50; BURST ≥6, MAIN/RESERVE по типам.</p></div>
+              <div><b>M7</b><p>Ровно 500 предыдущих тиражей. Семьи X и P складываются по позициям mod10. Учитываются только 111/333/555/777/999. Сигнал — только одна и та же тройня на 2+ соседних тиражах подряд.</p></div>
               <div><b>M6 V3</b><p>Окно1000; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>
             </div>
           </details>
@@ -309,6 +314,7 @@
     </main>
   </section>
 </div>
-<script type="module" src="app.js?v=067-m6-1000"></script>
+<script type="module" src="app.js?v=068-m7-odd500"></script>
+  <script type="module" src="m7.js?v=068-m7-odd500"></script>
 </body>
 </html>

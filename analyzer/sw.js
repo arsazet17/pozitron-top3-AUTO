@@ -1,9 +1,10 @@
-const CACHE='top3-analyzer-v0.6.7-m6-1000';
+const CACHE='top3-analyzer-v0.6.8-m7-odd500';
 const ASSETS=[
   './',
   './index.html',
   './styles.css?v=067-m6-1000',
-  './app.js?v=067-m6-1000',
+  './app.js?v=068-m7-odd500',
+  './m7.js?v=068-m7-odd500',
   './engine.js?v=067-m6-1000',
   './seed.json',
   './manifest.webmanifest?v=067-m6-1000',

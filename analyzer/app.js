@@ -5,7 +5,7 @@ import {computeTripleBeacon} from '../js/engine/triple-beacon.js';
 import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.6.7', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.6.8', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json',full:'../data/full-archive/all.json'};
 let state=null,fullArchive=[],fullCore=null,authoritative=null,busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
