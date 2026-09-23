@@ -1,0 +1,131 @@
+name: M6 window 1000 v0.6.7
+
+on:
+  push:
+    paths:
+      - '.github/workflows/m6-window-1000-v067.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expand M6 window to 1000 everywhere
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, re
+
+          def rw(path, fn):
+              p=Path(path)
+              s=p.read_text(encoding='utf-8')
+              n=fn(s)
+              if n==s:
+                  print(f'no change: {path}')
+              else:
+                  p.write_text(n, encoding='utf-8')
+                  print(f'updated: {path}')
+
+          # Canonical M6 V3 engine used by Yulia and Analyzer.
+          def patch_m6(s):
+              s=s.replace('TOP3-M6-REPEAT-FAMILY-150-V3-STRICT-20.09.2026','TOP3-M6-REPEAT-FAMILY-1000-V3-STRICT-23.09.2026')
+              s=s.replace('export const M6_V3_WINDOW=150;','export const M6_V3_WINDOW=1000;')
+              return s
+          rw('js/engine/m6-v3-strict.js', patch_m6)
+
+          # Analyzer helper / legacy-compatible calculations.
+          def patch_an_engine(s):
+              s=s.replace("const window=facts.slice(-150), f=family(current.combo);","const window=facts.slice(-1000), f=family(current.combo);")
+              s=s.replace("return {version:'V3',window:150,", "return {version:'V3',window:1000,")
+              s=s.replace('const window=facts.slice(-150);','const window=facts.slice(-1000);')
+              s=s.replace('idx-149','idx-999')
+              s=s.replace('window:150','window:1000')
+              # Preserve old property as compatibility alias, but make 1000 canonical.
+              s=s.replace('M6_REPEAT_FAMILY_150:m6.signal', 'M6_REPEAT_FAMILY_1000:m6.signal,M6_REPEAT_FAMILY_150:m6.signal')
+              return s
+          rw('analyzer/engine.js', patch_an_engine)
+
+          # Analyzer runtime: canonical 1000 property + visible labels + version.
+          def patch_an_app(s):
+              s=s.replace("const VER='0.6.6'", "const VER='0.6.7'")
+              s=s.replace('M6_REPEAT_FAMILY_150:m6sig', 'M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig')
+              s=s.replace("f.M6_REPEAT_FAMILY_150", "(f.M6_REPEAT_FAMILY_1000||f.M6_REPEAT_FAMILY_150)")
+              s=s.replace("fc().M6_REPEAT_FAMILY_150", "(fc().M6_REPEAT_FAMILY_1000||fc().M6_REPEAT_FAMILY_150)")
+              s=s.replace('/150','/1000')
+              s=s.replace('окне150','окне1000')
+              s=s.replace('окно150','окно1000')
+              return s
+          rw('analyzer/app.js', patch_an_app)
+
+          # Analyzer labels and cache-buster.
+          def patch_an_html(s):
+              s=s.replace('family150','family1000')
+              s=s.replace('150 тиражей','1000 тиражей')
+              s=s.replace('последние 150','последние 1000')
+              s=s.replace('/150','/1000')
+              s=s.replace('окне150','окне1000')
+              s=s.replace('Окно150','Окно1000')
+              s=re.sub(r'app\.js\?v=[^\"]+', 'app.js?v=067-m6-1000', s)
+              return s
+          rw('analyzer/index.html', patch_an_html)
+
+          # Main Yulia triples page: same 1000-draw window and labels.
+          def patch_triples(s):
+              s=s.replace('function repeatFamilies150(ctx,limit=150)', 'function repeatFamilies150(ctx,limit=1000)')
+              s=s.replace('/150','/1000')
+              s=s.replace('ПОСЛЕДНИЕ 150 ТИРАЖЕЙ','ПОСЛЕДНИЕ 1000 ТИРАЖЕЙ')
+              s=s.replace('ПОСЛЕДНИЕ 150','ПОСЛЕДНИЕ 1000')
+              s=s.replace('окно150','окно1000')
+              s=s.replace('окне150','окне1000')
+              s=s.replace(' / 150 · V3 STRICT',' / 1000 · V3 STRICT')
+              # Text fallback in case slash spacing differs.
+              s=s.replace('FAMILY / 150', 'FAMILY / 1000')
+              return s
+          rw('js/pages/triples.js', patch_triples)
+
+          # Analyzer service-worker: force fresh JS/engine/cache.
+          def patch_sw(s):
+              s=re.sub(r"const CACHE='[^']+';", "const CACHE='top3-analyzer-v0.6.7-m6-1000';", s)
+              s=re.sub(r"\.\/app\.js\?v=[^']+", "./app.js?v=067-m6-1000", s)
+              s=s.replace("'./engine.js',", "'./engine.js?v=067-m6-1000',")
+              s=s.replace('063-archive-poll','067-m6-1000')
+              return s
+          rw('analyzer/sw.js', patch_sw)
+
+          # Main app version so installed PWA refreshes visible build.
+          p=Path('data/version.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          d['version']='1.3.21'
+          d['buildDate']='2026-09-23'
+          d['note']='M6 V3 STRICT: окно повторных семей и сложение family+family увеличены с 150 до 1000 тиражей; Yulia и Analyzer используют одно правило.'
+          p.write_text(json.dumps(d, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+
+          # Bump main SW registration URL if present, to force update on installed Yulia PWA.
+          def patch_main_app(s):
+              return re.sub(r'sw\.js\?v=[0-9.]+', 'sw.js?v=1.3.21', s)
+          rw('js/app.js', patch_main_app)
+          PY
+      - name: Syntax checks
+        run: |
+          node --check js/engine/m6-v3-strict.js
+          node --check js/pages/triples.js
+          node --check analyzer/engine.js
+          node --check analyzer/app.js
+          node --check js/app.js
+      - name: Verify M6 is 1000
+        run: |
+          grep -q 'M6_V3_WINDOW=1000' js/engine/m6-v3-strict.js
+          grep -q 'limit=1000' js/pages/triples.js
+          grep -q "VER='0.6.7'" analyzer/app.js
+          grep -q 'slice(-1000)' analyzer/engine.js
+      - name: Commit changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/engine/m6-v3-strict.js js/pages/triples.js analyzer/engine.js analyzer/app.js analyzer/index.html analyzer/sw.js data/version.json js/app.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: expand M6 repeat-family window to 1000 draws'
+          git push
