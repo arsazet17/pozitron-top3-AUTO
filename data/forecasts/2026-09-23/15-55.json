@@ -5438,8 +5438,79 @@
   },
   "key": "2026-09-23|15:55",
   "issuedAt": "2026-09-23T12:31:21.190Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "448",
+  "factAt": "2026-09-23 15:55",
+  "audit": {
+    "fact": "448",
+    "family": "448",
+    "master": {
+      "hit": true,
+      "exact": true,
+      "families": [
+        "148",
+        "018",
+        "448"
+      ]
+    },
+    "main": {
+      "hit": false,
+      "seq": 2,
+      "td": 1,
+      "classification": "2-source selector-miss"
+    },
+    "algorithm": {
+      "hit": true,
+      "relations": [
+        {
+          "source": "SEQ",
+          "delta": "589",
+          "family": "448",
+          "repeat": 2,
+          "last": "2025-12-06 04:40",
+          "order": "448",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "448",
+              "count": 1,
+              "last": "2025-12-06 04:40"
+            },
+            {
+              "order": "484",
+              "count": 1,
+              "last": "2023-12-04 18:25"
+            }
+          ]
+        }
+      ]
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "081"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "4": {
+        "seq": 38,
+        "seqTotal": 128,
+        "td": 6,
+        "tdTotal": 21
+      },
+      "8": {
+        "seq": 36,
+        "seqTotal": 128,
+        "td": 9,
+        "tdTotal": 21
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "2-source selector-miss",
+    "workError": "MASTER HIT — freeze подтверждён"
+  },
   "mirror": []
 }
