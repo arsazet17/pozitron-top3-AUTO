@@ -1,0 +1,173 @@
+name: Apply M3 window1000 + collapse counts
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-m3-window-1000-counts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: top3-m3-window1000-counts
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch M3 engine and Analyzer UI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if new in text:
+                  print(f'{label}: already applied')
+                  return text
+              if old not in text:
+                  raise SystemExit(f'{label}: expected source not found')
+              print(f'{label}: patched')
+              return text.replace(old, new, 1)
+
+          # Canonical M1/M2/M3 engine: M3 now scans 1000 previous draws and stores
+          # how many source draws collapsed to each forecasted triple.
+          p = Path('js/engine/triples-yulia.js')
+          s = p.read_text(encoding='utf-8')
+          s = replace_once(
+              s,
+              'export const TRIPLE_CHAT_RULE_CODE = "YULIA-TOP3-M1M2M3-CANONICAL-1.2.14";\nexport const TRIPLE_CHAT_SEED_ID = 267958;',
+              'export const TRIPLE_CHAT_RULE_CODE = "YULIA-TOP3-M1M2M3-CANONICAL-1.2.15-M3-1000";\nexport const M3_WINDOW = 1000;\nexport const TRIPLE_CHAT_SEED_ID = 267958;',
+              'engine rule/version'
+          )
+          s = replace_once(
+              s,
+              'const older=allReal.filter(d=>d.id<current.id),idxMap=new Map(allReal.map((d,i)=>[d.id,i])),previous15=older.slice(-15);',
+              'const older=allReal.filter(d=>d.id<current.id),idxMap=new Map(allReal.map((d,i)=>[d.id,i])),previousM3=older.slice(-M3_WINDOW);',
+              'M3 lookback variable'
+          )
+          s = replace_once(
+              s,
+              'const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[],seriesEvents:[],serialEvents:[]};',
+              'const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[],seriesEvents:[],serialEvents:[],m3Window:M3_WINDOW,m3CollapseCounts:{}};',
+              'M3 diagnostics'
+          )
+          s = replace_once(
+              s,
+              'for(const src of previous15){',
+              'for(const src of previousM3){',
+              'M3 1000 loop'
+          )
+          s = replace_once(
+              s,
+              '  const normalM1=rawM1.filter(r=>!packSourceIds.has(r.sourceId));\n  const normalM3=rawM3.filter(r=>!packSourceIds.has(r.sourceId));\n  const m1Forecast=uniq(normalM1.map(r=>r.triple));',
+              '  const normalM1=rawM1.filter(r=>!packSourceIds.has(r.sourceId));\n  const normalM3=rawM3.filter(r=>!packSourceIds.has(r.sourceId));\n  const m3CollapseCounts={};\n  for(const r of rawM3)m3CollapseCounts[r.triple]=(m3CollapseCounts[r.triple]||0)+1;\n  diag.m3CollapseCounts={...m3CollapseCounts};\n  const m1Forecast=uniq(normalM1.map(r=>r.triple));',
+              'M3 collapse counters'
+          )
+          s = replace_once(
+              s,
+              'newM3.push({triple:r.triple,stage:1,sourceId:r.sourceId,sourceCode:r.sourceCode,bornCode:fact,bornAt:current.id});',
+              'newM3.push({triple:r.triple,stage:1,sourceId:r.sourceId,sourceCode:r.sourceCode,bornCode:fact,bornAt:current.id,collapseCount:Number(m3CollapseCounts[r.triple]||0),window:M3_WINDOW});',
+              'M3 forecast metadata'
+          )
+          p.write_text(s, encoding='utf-8')
+
+          # Analyzer: expose counts in the forecast object and show them next to every M3 triple.
+          p = Path('analyzer/app.js')
+          s = p.read_text(encoding='utf-8')
+          s = replace_once(s, "const VER='0.6.9'", "const VER='0.7.0'", 'Analyzer version')
+          s = replace_once(
+              s,
+              '  const m3=uniq((snap.m3||[]).map(x=>x.triple));\n  const serial=uniq((snap.serialLeaders||[]).map(x=>x.triple));',
+              '  const m3=uniq((snap.m3||[]).map(x=>x.triple));\n  const m3Details=[...new Map([...(snap.m3||[])].filter(x=>x?.triple).sort((a,b)=>Number(a.bornAt||0)-Number(b.bornAt||0)).map(x=>[x.triple,{triple:x.triple,collapses:Number(x.collapseCount||0),window:Number(x.window||1000),stage:Number(x.stage||0),bornAt:Number(x.bornAt||0)}])).values()].sort((a,b)=>Number(a.triple[0])-Number(b.triple[0]));\n  const m3CollapseCounts=Object.fromEntries(m3Details.map(x=>[x.triple,x.collapses]));\n  const serial=uniq((snap.serialLeaders||[]).map(x=>x.triple));',
+              'M3 UI details'
+          )
+          s = replace_once(
+              s,
+              'M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,',
+              'M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,M3_details:m3Details,M3_COLLAPSES:m3CollapseCounts,serial_leader:serial,',
+              'M3 forecast fields'
+          )
+          s = replace_once(
+              s,
+              "  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';",
+              "  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));const m3Details=Array.isArray(f.M3_details)?f.M3_details:[];$('#m3Card').textContent=m3Details.length?m3Details.map(x=>`${x.triple} (${Number(x.collapses||0)} раз)`).join(' / '):sig(f.M3);$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';",
+              'M3 card counts'
+          )
+          p.write_text(s, encoding='utf-8')
+
+          # Visible descriptions/cache-busting.
+          p = Path('analyzer/index.html')
+          s = p.read_text(encoding='utf-8')
+          s = replace_once(s, '<div class="version" id="version">v0.6.9</div>', '<div class="version" id="version">v0.7.0</div>', 'HTML version')
+          s = replace_once(s, '<div class="method"><span>M3 · 15 фактов</span><b id="m3Card">—</b></div>', '<div class="method"><span>M3 · 1000 фактов · схлопывания</span><b id="m3Card">—</b></div>', 'M3 card label')
+          s = replace_once(
+              s,
+              '<div><b>M1/M3</b><p>Exact-order XXX блокирует пару; иначе перестановки. M1 через mirror-history gate, M3 — предыдущие15.</p></div>',
+              '<div><b>M1/M3</b><p>Exact-order XXX блокирует пару; иначе перестановки. M1 через mirror-history gate. M3 проверяет предыдущие 1000 тиражей; рядом с каждой прогнозируемой тройней показывается, сколько раз она схлопнулась в этом окне.</p></div>',
+              'M3 rule text'
+          )
+          s = replace_once(s, '<script type="module" src="app.js?v=069-m4-diffmirror1000"></script>', '<script type="module" src="app.js?v=070-m3-1000-counts"></script>', 'app cache-bust')
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('analyzer/sw.js')
+          s = p.read_text(encoding='utf-8')
+          s = replace_once(s, "const CACHE='top3-analyzer-v0.6.9-m4-diffmirror1000';", "const CACHE='top3-analyzer-v0.7.0-m3-1000-counts';", 'SW cache version')
+          s = replace_once(s, "'./app.js?v=069-m4-diffmirror1000',", "'./app.js?v=070-m3-1000-counts',", 'SW app asset')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Validate JavaScript syntax
+        run: |
+          node --check js/engine/triples-yulia.js
+          node --check analyzer/app.js
+          node --check analyzer/sw.js
+
+      - name: Verify M3 on current archive
+        shell: bash
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import {computeTripleChat,M3_WINDOW} from './js/engine/triples-yulia.js';
+          const records=JSON.parse(fs.readFileSync('data/archive.json','utf8'));
+          const full=JSON.parse(fs.readFileSync('data/full-archive/all.json','utf8'));
+          const out=computeTripleChat(records,full);
+          const snap=out.snapshot;
+          if(M3_WINDOW!==1000) throw new Error(`M3_WINDOW=${M3_WINDOW}`);
+          if(!snap || snap.diag?.m3Window!==1000) throw new Error('M3 diagnostics did not use window1000');
+          const active=snap.m3||[];
+          const latest=new Map();
+          for(const x of active){
+            const prev=latest.get(x.triple);
+            if(!prev || Number(x.bornAt||0)>=Number(prev.bornAt||0)) latest.set(x.triple,x);
+          }
+          for(const x of latest.values()){
+            if(!Number.isFinite(Number(x.collapseCount)) || Number(x.collapseCount)<1) throw new Error(`No collapseCount for ${x.triple}`);
+            if(Number(x.window)!==1000) throw new Error(`Wrong M3 window metadata for ${x.triple}`);
+          }
+          console.log('M3 window:',snap.diag.m3Window);
+          console.log('M3 active:',[...latest.values()].map(x=>`${x.triple}=${x.collapseCount}`).join(' / ')||'NO SIGNAL');
+          console.log('M3 raw counts:',JSON.stringify(snap.diag.m3CollapseCounts||{}));
+          NODE
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/engine/triples-yulia.js analyzer/app.js analyzer/index.html analyzer/sw.js
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "M3: scan 1000 draws and show collapse counts"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
