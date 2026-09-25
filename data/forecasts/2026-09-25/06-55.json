@@ -5993,9 +5993,96 @@
   },
   "key": "2026-09-25|06:55",
   "issuedAt": "2026-09-25T03:31:33.579Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "265",
+  "factAt": "2026-09-25 06:55",
+  "audit": {
+    "fact": "265",
+    "family": "256",
+    "master": {
+      "hit": true,
+      "exact": false,
+      "families": [
+        "256",
+        "001",
+        "169"
+      ]
+    },
+    "main": {
+      "hit": true,
+      "seq": 4,
+      "td": 1,
+      "classification": "MAIN covered"
+    },
+    "algorithm": {
+      "hit": true,
+      "relations": [
+        {
+          "source": "SEQ",
+          "delta": "824",
+          "family": "256",
+          "repeat": 4,
+          "last": "2023-10-29 18:55",
+          "order": "526",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "526",
+              "count": 1,
+              "last": "2023-10-29 18:55"
+            },
+            {
+              "order": "562",
+              "count": 1,
+              "last": "2023-08-31 04:40"
+            },
+            {
+              "order": "256",
+              "count": 1,
+              "last": "2023-08-05 13:10"
+            },
+            {
+              "order": "265",
+              "count": 1,
+              "last": "2023-07-08 13:25"
+            }
+          ]
+        }
+      ]
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "010"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "2": {
+        "seq": 39,
+        "seqTotal": 120,
+        "td": 15,
+        "tdTotal": 54
+      },
+      "5": {
+        "seq": 36,
+        "seqTotal": 120,
+        "td": 13,
+        "tdTotal": 54
+      },
+      "6": {
+        "seq": 37,
+        "seqTotal": 120,
+        "td": 14,
+        "tdTotal": 54
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "MAIN covered",
+    "workError": "MASTER HIT — freeze подтверждён"
+  },
   "mirror": [
     {
       "base": "639",
