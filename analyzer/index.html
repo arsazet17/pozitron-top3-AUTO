@@ -18,7 +18,7 @@
   <aside class="sidebar">
     <div class="brand">
       <img class="app-avatar" src="../assets/top3-777-original.png?v=062-final-2129" alt="TOP-3 777">
-      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.7.1</div></div>
+      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.7.2</div></div>
     </div>
 
     <nav class="nav primary-nav">
@@ -75,7 +75,7 @@
           <div class="method"><span>M3 · 15 фактов</span><b id="m3Card">—</b></div>
           <div class="method"><span>M4 · Δ ↔ зеркало · 1000</span><b id="m4Card">—</b></div>
           <div class="method accent-method"><span>M7 · Нечётные тройни · 500</span><b id="m5Card">—</b></div>
-          <div class="method accent-method"><span>M6 V3 · Repeat family1000</span><b id="m6Card">—</b></div>
+          <div class="method accent-method"><span>M6 V3 + M6-R2 · family1000</span><b id="m6Card">—</b></div>
         </div>
 
         <div class="card" id="m4Detail">
@@ -101,6 +101,18 @@
             <div id="m6Occurrences"></div>
             <h4>Пути family + family → XXX</h4>
             <div id="m6Paths"></div>
+            <div class="card" style="margin-top:1rem">
+              <div class="section-title compact"><div><div class="kicker">M6-R2 · EXPERIMENTAL</div><h3>Фильтр редкого повторения family</h3></div></div>
+              <div class="audit-grid">
+                <div><span>Family / count1000</span><b id="m6R2FamilyCount">—</b><small>Допуск только 4–7</small></div>
+                <div><span>gap1 / gap2 / gap3</span><b id="m6R2Gaps">—</b><small>gap1 ≥300 · gap3 &lt;100</small></div>
+                <div><span>mirror_family / count</span><b id="m6R2Mirror">—</b><small>Между F1 и CURRENT ровно 2</small></div>
+                <div><span>mirror_lag</span><b id="m6R2Lag">—</b><small>Не более 25</small></div>
+                <div><span>Прогноз M6-R2</span><b id="m6R2Result">NO SIGNAL</b><small>family + family → только XXX</small></div>
+              </div>
+              <div class="muted" id="m6R2Reason" style="margin-top:.8rem">NO SIGNAL</div>
+              <div class="muted" style="margin-top:.5rem">Экспериментальный фильтр: порог mirror_lag ≤25 найден на этом же архиве. В основной M6 не вмешивается и отдельно показывается в скобках.</div>
+            </div>
           </div>
 
           <div class="card">
@@ -117,7 +129,7 @@
               <div><b>M2</b><p>Фиксированные family-пары, окно15, ready-сигнал живёт2 факта.</p></div>
               <div><b>M4</b><p>Берётся последняя Δ текущего факта и её зеркало. В последних 1000 тиражах для каждой тройни 000–999 берётся только её самое последнее появление, вычисляются Δ и зеркало Δ. Сравнение по family без порядка: последняя Δ ↔ зеркало тройни или зеркало последней Δ ↔ Δ тройни. Чья пара схлопнулась — ту тройню прогнозируем.</p></div>
               <div><b>M7</b><p>Ровно 500 предыдущих тиражей. Семьи X и P складываются по позициям mod10. Учитываются только 111/333/555/777/999. Сигнал — только одна и та же тройня на 2+ соседних тиражах подряд.</p></div>
-              <div><b>M6 V3</b><p>Окно1000; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>
+              <div><b>M6 V3 + M6-R2</b><p>Базовый M6 остаётся без изменений. M6-R2 — экспериментальный дополнительный фильтр: count family 4–7; по последним четырём появлениям gap1 ≥300 и gap3 &lt;100; mirror_family точной CURRENT должна встретиться ровно 2 раза между F1 и CURRENT, последнее зеркало — не дальше 25 тиражей. После прохождения фильтров family складывается сама с собой, в сигнал идут только XXX. Прогноз M6-R2 показывается отдельно в скобках.</p></div>
             </div>
           </details>
         </div>
@@ -319,7 +331,7 @@
     </main>
   </section>
 </div>
-<script type="module" src="app.js?v=071-m3-restored15"></script>
+<script type="module" src="app.js?v=072-m6-r2"></script>
   <script type="module" src="m7.js?v=068-m7-odd500"></script>
 </body>
 </html>

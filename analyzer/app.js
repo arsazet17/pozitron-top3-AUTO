@@ -3,9 +3,10 @@ import {computeTripleChat} from '../js/engine/triples-chat.js';
 import {computeTripleAllLinks} from '../js/engine/m4-diff-mirror-1000.js';
 import {computeTripleBeacon} from '../js/engine/triple-beacon.js';
 import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';
+import {computeM6R2} from '../js/engine/m6-r2.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.7.1', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.7.2', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json',full:'../data/full-archive/all.json'};
 let state=null,fullArchive=[],fullCore=null,authoritative=null,busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -41,6 +42,7 @@ function rebuildAuthoritative(){
   const full=completeFullArchive();
   const tc=computeTripleChat(records,full),snap=tc.snapshot||{};
   const m6calc=computeM6V3Strict({records,fullArchive:full}),m6c=m6calc.current||null;
+  const m6r2=computeM6R2({records,fullArchive:full});
   const m4calc=computeTripleAllLinks(records),top=Number(m4calc?.ranking?.[0]?.count||0);
   const m4=top?(m4calc.ranking||[]).filter(x=>Number(x.count)===top).map(x=>x.triple):[];
   const last=records.at(-1),target=nextSlot(last);
@@ -51,8 +53,8 @@ function rebuildAuthoritative(){
   const details={};for(const p of (m6c?.paths||[])){const m=String(p).match(/→(\d{3})$/),t=m?.[1]||'M6';(details[t]??=[]).push(p)}
   const by=new Map(records.map(r=>[r.draw,r]));
   const m6view=m6c?{family:m6c.family,count:m6c.count,trigger:m6c.trigger,signal:m6sig,occurrences:(m6c.appearances||[]).map(id=>by.get(id)||{draw:id,combo:''}),details}:{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}};
-  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
-  authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m4:m4calc,forecast};
+  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,M6_R2:[...(m6r2.signal||[])],FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
+  authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m6r2,m4:m4calc,forecast};
   state.methodState??={};state.methodState.currentForecast=forecast;
   state.methodState.leader20={counts:{...(snap.leader?.counts||{})},leaders:[...(snap.leader?.leaders||[])],max_count:Number(snap.leader?.max||0),window:`последние 20 · до №${last.draw}`};
   state.archive20=(snap.archive||[]).slice(-20).map(r=>[r.id,r.date,r.time,r.fact,r.before,r.check,r.after]);
@@ -63,6 +65,7 @@ function authoritativeM5(){
   return{main:false,reserve:false,burst:Boolean(b.signal),signal:Boolean(b.signal),total:links.length,links,counts:b.typeCounts||{},shared:b};
 }
 function currentM6(){return authoritative?.m6||{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}}}
+function currentM6R2(){return authoritative?.m6r2||{method:'M6-R2',experimental:true,trigger:false,signal:[],family:'',familyCount:0,gap1:null,gap2:null,gap3:null,mirrorFamily:'',mirrorCount:0,mirrorLag:null,reason:'NO SIGNAL'}}
 
 function pollSlot(now=new Date()){
   const startMinute=now.getMinutes()<30?0:30;
@@ -144,12 +147,13 @@ function renderM4Detail(){
 }
 
 function renderMain(){
-  const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6();
+  const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6(),m6r2=currentM6R2();
   $('#version').textContent='v'+VER;$('#currentFact').textContent=x?`№${x.draw} · ${x.date} ${x.time} · ${x.combo}`:'—';$('#nextDraw').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';
   $('#lastResult').textContent=x?.combo||'—';$('#lastResultMeta').textContent=x?`№${x.draw} · ${x.date} ${x.time}`:'—';$('#finalFrozen').textContent=sig(f.FINAL);$('#finalFrozenTarget').textContent=f.draw?`На №${f.draw} · ${f.date} ${f.time}`:'—';
-  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';
+  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders]].forEach(([id,v])=>$(id).textContent=sig(v));const m6Base=sig(f.M6_REPEAT_FAMILY_1000||f.M6_REPEAT_FAMILY_150);const m6r2Forecast=m6r2.trigger?sig(m6r2.signal):'NO SIGNAL';$('#m6Card').textContent=`${m6Base} (M6-R2: ${m6r2Forecast})`;$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';
   const m4Label=$('#m4Card')?.previousElementSibling;if(m4Label)m4Label.textContent='M4 · Δ ↔ зеркало · 1000';renderM4Detail();
   $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);
+  if($('#m6R2Result'))$('#m6R2Result').textContent=m6r2.trigger?sig(m6r2.signal):'NO SIGNAL';if($('#m6R2FamilyCount'))$('#m6R2FamilyCount').textContent=`${m6r2.family||'—'} · ${m6r2.familyCount??0}`;if($('#m6R2Gaps'))$('#m6R2Gaps').textContent=[m6r2.gap1,m6r2.gap2,m6r2.gap3].map(v=>v??'—').join(' / ');if($('#m6R2Mirror'))$('#m6R2Mirror').textContent=`${m6r2.mirrorFamily||'—'} · ${m6r2.mirrorCount??0} раза`;if($('#m6R2Lag'))$('#m6R2Lag').textContent=m6r2.mirrorLag??'—';if($('#m6R2Reason'))$('#m6R2Reason').textContent=m6r2.trigger?'✅ Все фильтры M6-R2 выполнены. Экспериментальный сигнал на следующий тираж.':`NO SIGNAL · ${m6r2.reason||'условия не выполнены'}`;
   $('#m6Occurrences').innerHTML=(m6.occurrences||[]).map((o,i)=>`<span class="chip">${i+1}. №${o.draw} ${o.combo}</span>`).join(' ')||'<span class="muted">Нет</span>';
   $('#m6Paths').innerHTML=Object.entries(m6.details||{}).map(([t,p])=>`<details><summary><b>${t}</b> · ${p.length} путей</summary><div class="mono">${p.slice(0,12).map(esc).join('<br>')}</div></details>`).join('')||'<span class="muted">Нет M6-сигнала</span>';
   $('#auditBox').innerHTML=lastAudit?`<div class="audit-grid"><div><span>Frozen ДО</span><b>${sig(lastAudit.oldFinal)}</b></div><div><span>Проверка</span><b>${lastAudit.check}</b></div><div><span>Новый Frozen</span><b>${sig(lastAudit.final)}</b></div><div><span>M6</span><b>${sig(lastAudit.m6.signal)}</b></div></div>`:`<div class="audit-grid"><div><span>Текущий Frozen</span><b>${sig(f.FINAL)}</b></div><div><span>Статус</span><b>${esc(f.status||'—')}</b></div></div>`;
