@@ -1,0 +1,71 @@
+from pathlib import Path
+
+
+def rep(s, old, new, label):
+    if new in s:
+        print(label, 'already applied')
+        return s
+    if old not in s:
+        raise SystemExit(label + ': source not found')
+    print(label, 'patched')
+    return s.replace(old, new, 1)
+
+# analyzer/app.js
+p=Path('analyzer/app.js'); s=p.read_text(encoding='utf-8')
+s=rep(s,
+    "import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';",
+    "import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';\nimport {computeM6R2} from '../js/engine/m6-r2.js';",
+    'import M6-R2')
+s=rep(s,"const VER='0.7.1'","const VER='0.7.2'",'version')
+s=rep(s,
+    "  const m6calc=computeM6V3Strict({records,fullArchive:full}),m6c=m6calc.current||null;",
+    "  const m6calc=computeM6V3Strict({records,fullArchive:full}),m6c=m6calc.current||null;\n  const m6r2=computeM6R2({records,fullArchive:full});",
+    'compute M6-R2')
+s=rep(s,
+    "  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};\n  authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m4:m4calc,forecast};",
+    "  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,M6_R2:[...(m6r2.signal||[])],FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};\n  authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m6r2,m4:m4calc,forecast};",
+    'forecast M6-R2')
+s=rep(s,
+    "function currentM6(){return authoritative?.m6||{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}}}",
+    "function currentM6(){return authoritative?.m6||{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}}}\nfunction currentM6R2(){return authoritative?.m6r2||{method:'M6-R2',experimental:true,trigger:false,signal:[],family:'',familyCount:0,gap1:null,gap2:null,gap3:null,mirrorFamily:'',mirrorCount:0,mirrorLag:null,reason:'NO SIGNAL'}}",
+    'M6-R2 helper')
+s=rep(s,
+    "  const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6();",
+    "  const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6(),m6r2=currentM6R2();",
+    'render M6-R2 state')
+s=rep(s,
+    "  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';",
+    "  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders]].forEach(([id,v])=>$(id).textContent=sig(v));const m6Base=sig(f.M6_REPEAT_FAMILY_1000||f.M6_REPEAT_FAMILY_150);const m6r2Forecast=m6r2.trigger?sig(m6r2.signal):'NO SIGNAL';$('#m6Card').textContent=`${m6Base} (M6-R2: ${m6r2Forecast})`;$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';",
+    'M6 card bracket forecast')
+s=rep(s,
+    "  $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);",
+    "  $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);\n  if($('#m6R2Result'))$('#m6R2Result').textContent=m6r2.trigger?sig(m6r2.signal):'NO SIGNAL';if($('#m6R2FamilyCount'))$('#m6R2FamilyCount').textContent=`${m6r2.family||'—'} · ${m6r2.familyCount??0}`;if($('#m6R2Gaps'))$('#m6R2Gaps').textContent=[m6r2.gap1,m6r2.gap2,m6r2.gap3].map(v=>v??'—').join(' / ');if($('#m6R2Mirror'))$('#m6R2Mirror').textContent=`${m6r2.mirrorFamily||'—'} · ${m6r2.mirrorCount??0} раза`;if($('#m6R2Lag'))$('#m6R2Lag').textContent=m6r2.mirrorLag??'—';if($('#m6R2Reason'))$('#m6R2Reason').textContent=m6r2.trigger?'✅ Все фильтры M6-R2 выполнены. Экспериментальный сигнал на следующий тираж.':`NO SIGNAL · ${m6r2.reason||'условия не выполнены'}`;",
+    'M6-R2 detail render')
+p.write_text(s,encoding='utf-8')
+
+# analyzer/index.html
+p=Path('analyzer/index.html'); s=p.read_text(encoding='utf-8')
+s=rep(s,'<div class="version" id="version">v0.7.1</div>','<div class="version" id="version">v0.7.2</div>','HTML version')
+s=rep(s,
+    '<div class="method accent-method"><span>M6 V3 · Repeat family1000</span><b id="m6Card">—</b></div>',
+    '<div class="method accent-method"><span>M6 V3 + M6-R2 · family1000</span><b id="m6Card">—</b></div>',
+    'M6 card label')
+old='''            <h4>Появления family в окне1000</h4>\n            <div id="m6Occurrences"></div>\n            <h4>Пути family + family → XXX</h4>\n            <div id="m6Paths"></div>'''
+new='''            <h4>Появления family в окне1000</h4>\n            <div id="m6Occurrences"></div>\n            <h4>Пути family + family → XXX</h4>\n            <div id="m6Paths"></div>\n            <div class="card" style="margin-top:1rem">\n              <div class="section-title compact"><div><div class="kicker">M6-R2 · EXPERIMENTAL</div><h3>Фильтр редкого повторения family</h3></div></div>\n              <div class="audit-grid">\n                <div><span>Family / count1000</span><b id="m6R2FamilyCount">—</b><small>Допуск только 4–7</small></div>\n                <div><span>gap1 / gap2 / gap3</span><b id="m6R2Gaps">—</b><small>gap1 ≥300 · gap3 &lt;100</small></div>\n                <div><span>mirror_family / count</span><b id="m6R2Mirror">—</b><small>Между F1 и CURRENT ровно 2</small></div>\n                <div><span>mirror_lag</span><b id="m6R2Lag">—</b><small>Не более 25</small></div>\n                <div><span>Прогноз M6-R2</span><b id="m6R2Result">NO SIGNAL</b><small>family + family → только XXX</small></div>\n              </div>\n              <div class="muted" id="m6R2Reason" style="margin-top:.8rem">NO SIGNAL</div>\n              <div class="muted" style="margin-top:.5rem">Экспериментальный фильтр: порог mirror_lag ≤25 найден на этом же архиве. В основной M6 не вмешивается и отдельно показывается в скобках.</div>\n            </div>'''
+s=rep(s,old,new,'M6-R2 detail block')
+s=rep(s,
+    '<div><b>M6 V3</b><p>Окно1000; только 3-й+ выход текущей family; family складывается сама с собой; сохраняются только XXX.</p></div>',
+    '<div><b>M6 V3 + M6-R2</b><p>Базовый M6 остаётся без изменений. M6-R2 — экспериментальный дополнительный фильтр: count family 4–7; по последним четырём появлениям gap1 ≥300 и gap3 &lt;100; mirror_family точной CURRENT должна встретиться ровно 2 раза между F1 и CURRENT, последнее зеркало — не дальше 25 тиражей. После прохождения фильтров family складывается сама с собой, в сигнал идут только XXX. Прогноз M6-R2 показывается отдельно в скобках.</p></div>',
+    'M6-R2 rules')
+s=rep(s,'<script type="module" src="app.js?v=071-m3-restored15"></script>','<script type="module" src="app.js?v=072-m6-r2"></script>','app cache bust')
+p.write_text(s,encoding='utf-8')
+
+# analyzer/sw.js
+p=Path('analyzer/sw.js'); s=p.read_text(encoding='utf-8')
+s=rep(s,"const CACHE='top3-analyzer-v0.7.1-m3-restored15';","const CACHE='top3-analyzer-v0.7.2-m6-r2';",'SW cache')
+s=rep(s,"'./app.js?v=071-m3-restored15',","'./app.js?v=072-m6-r2',",'SW app')
+if "../js/engine/m6-r2.js" not in s:
+    marker="  '../js/engine/m4-diff-mirror-1000.js',\n"
+    if marker not in s: raise SystemExit('SW marker not found')
+    s=s.replace(marker,marker+"  '../js/engine/m6-r2.js',\n",1)
+p.write_text(s,encoding='utf-8')
