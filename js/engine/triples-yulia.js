@@ -4,7 +4,8 @@
  * two applications cannot drift on M1/M2/M3 rules.
  */
 
-export const TRIPLE_CHAT_RULE_CODE = "YULIA-TOP3-M1M2M3-CANONICAL-1.2.14";
+export const TRIPLE_CHAT_RULE_CODE = "YULIA-TOP3-M1M2M3-CANONICAL-1.2.15-M3-1000";
+export const M3_WINDOW = 1000;
 export const TRIPLE_CHAT_SEED_ID = 267958;
 export const SERIAL_LEADER_TTL = 5;
 
@@ -191,8 +192,8 @@ export function advanceSerialLeaders(active=[],previousStreaks={},additionBirths
 function processForward(state,current,allReal,counts){
   const before=[...state.frozen],fact=current.code;
   const check=!before.length?"сигнала не было":before.includes(fact)?"✅ HIT":"❌ мимо";
-  const older=allReal.filter(d=>d.id<current.id),idxMap=new Map(allReal.map((d,i)=>[d.id,i])),previous15=older.slice(-15);
-  const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[],seriesEvents:[],serialEvents:[]};
+  const older=allReal.filter(d=>d.id<current.id),idxMap=new Map(allReal.map((d,i)=>[d.id,i])),previousM3=older.slice(-M3_WINDOW);
+  const diag={blocks:[],raw:[],packages:[],dependency:[],mirror:"",mirrorPass:false,mirrorHits:0,m2Events:[],seriesEvents:[],serialEvents:[],m3Window:M3_WINDOW,m3CollapseCounts:{}};
 
   const carriedM3=[];
   for(const b of state.m3)if(b.stage===1)carriedM3.push({...b,stage:2});
@@ -220,7 +221,7 @@ function processForward(state,current,allReal,counts){
   }
 
   const rawM3=[];
-  for(const src of previous15){
+  for(const src of previousM3){
     const ev=pairEval(src.code,fact);
     if(ev.blocked){diag.blocks.push(`M3 ${src.code}+${fact}=${ev.exact} BLOCK`);continue}
     for(const t of ev.triples)rawM3.push({method:"M3",triple:t,sourceId:src.id,sourceCode:src.code,exact:ev.exact});
@@ -246,13 +247,16 @@ function processForward(state,current,allReal,counts){
 
   const normalM1=rawM1.filter(r=>!packSourceIds.has(r.sourceId));
   const normalM3=rawM3.filter(r=>!packSourceIds.has(r.sourceId));
+  const m3CollapseCounts={};
+  for(const r of rawM3)m3CollapseCounts[r.triple]=(m3CollapseCounts[r.triple]||0)+1;
+  diag.m3CollapseCounts={...m3CollapseCounts};
   const m1Forecast=uniq(normalM1.map(r=>r.triple));
   const newM3=[],m3Dedup=new Set();
   for(const r of normalM3){
     const k=`${r.sourceId}|${r.triple}`;
     if(m3Dedup.has(k))continue;
     m3Dedup.add(k);
-    newM3.push({triple:r.triple,stage:1,sourceId:r.sourceId,sourceCode:r.sourceCode,bornCode:fact,bornAt:current.id});
+    newM3.push({triple:r.triple,stage:1,sourceId:r.sourceId,sourceCode:r.sourceCode,bornCode:fact,bornAt:current.id,collapseCount:Number(m3CollapseCounts[r.triple]||0),window:M3_WINDOW});
   }
   const packages=pGroups.length?["000"]:[];
 

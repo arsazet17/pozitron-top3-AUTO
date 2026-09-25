@@ -1,9 +1,9 @@
-const CACHE='top3-analyzer-v0.6.9-m4-diffmirror1000';
+const CACHE='top3-analyzer-v0.7.0-m3-1000-counts';
 const ASSETS=[
   './',
   './index.html',
   './styles.css?v=067-m6-1000',
-  './app.js?v=069-m4-diffmirror1000',
+  './app.js?v=070-m3-1000-counts',
   './m7.js?v=068-m7-odd500',
   '../js/engine/m4-diff-mirror-1000.js',
   './engine.js?v=067-m6-1000',
