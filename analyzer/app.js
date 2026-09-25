@@ -5,7 +5,7 @@ import {computeTripleBeacon} from '../js/engine/triple-beacon.js';
 import {computeM6V3Strict} from '../js/engine/m6-v3-strict.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const VER='0.7.0', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
+const VER='0.7.1', KEY='top3-analyzer-online-state-v060', AUTO='top3-analyzer-auto-v1';
 const REMOTE={latest:'../data/latest.json',archive:'../data/archive.json',full:'../data/full-archive/all.json'};
 let state=null,fullArchive=[],fullCore=null,authoritative=null,busy=false,timer=null,repeatFilter='all',lastAudit=null,lastPollMinuteKey='',completedPollSlot='';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -46,14 +46,12 @@ function rebuildAuthoritative(){
   const last=records.at(-1),target=nextSlot(last);
   const m2=uniq((snap.m2||[]).map(x=>x.triple));
   const m3=uniq((snap.m3||[]).map(x=>x.triple));
-  const m3Details=[...new Map([...(snap.m3||[])].filter(x=>x?.triple).sort((a,b)=>Number(a.bornAt||0)-Number(b.bornAt||0)).map(x=>[x.triple,{triple:x.triple,collapses:Number(x.collapseCount||0),window:Number(x.window||1000),stage:Number(x.stage||0),bornAt:Number(x.bornAt||0)}])).values()].sort((a,b)=>Number(a.triple[0])-Number(b.triple[0]));
-  const m3CollapseCounts=Object.fromEntries(m3Details.map(x=>[x.triple,x.collapses]));
   const serial=uniq((snap.serialLeaders||[]).map(x=>x.triple));
   const core=uniq(snap.frozen||[]),m6sig=uniq(m6c?.triples||[]);
   const details={};for(const p of (m6c?.paths||[])){const m=String(p).match(/→(\d{3})$/),t=m?.[1]||'M6';(details[t]??=[]).push(p)}
   const by=new Map(records.map(r=>[r.draw,r]));
   const m6view=m6c?{family:m6c.family,count:m6c.count,trigger:m6c.trigger,signal:m6sig,occurrences:(m6c.appearances||[]).map(id=>by.get(id)||{draw:id,combo:''}),details}:{family:'',count:0,trigger:false,signal:[],occurrences:[],details:{}};
-  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,M3_details:m3Details,M3_COLLAPSES:m3CollapseCounts,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
+  const forecast={draw:target.draw,date:target.date,time:target.time,M1:uniq(snap.m1||[]),M2_ready:m2,M3:m3,serial_leader:serial,M4_leaders:m4,M6_REPEAT_FAMILY_1000:m6sig,M6_REPEAT_FAMILY_150:m6sig,FINAL_CORE:core,FINAL:core,M4_IN_FINAL:false,status:core.length?'FROZEN':'NO VALID NUMERIC SIGNAL'};
   authoritative={triple:tc,m6:m6view,m6Raw:m6calc,m4:m4calc,forecast};
   state.methodState??={};state.methodState.currentForecast=forecast;
   state.methodState.leader20={counts:{...(snap.leader?.counts||{})},leaders:[...(snap.leader?.leaders||[])],max_count:Number(snap.leader?.max||0),window:`последние 20 · до №${last.draw}`};
@@ -149,7 +147,7 @@ function renderMain(){
   const x=lf(),f=fc(),m5=authoritativeM5(),m6=currentM6();
   $('#version').textContent='v'+VER;$('#currentFact').textContent=x?`№${x.draw} · ${x.date} ${x.time} · ${x.combo}`:'—';$('#nextDraw').textContent=f.draw?`№${f.draw} · ${f.date} ${f.time}`:'—';
   $('#lastResult').textContent=x?.combo||'—';$('#lastResultMeta').textContent=x?`№${x.draw} · ${x.date} ${x.time}`:'—';$('#finalFrozen').textContent=sig(f.FINAL);$('#finalFrozenTarget').textContent=f.draw?`На №${f.draw} · ${f.date} ${f.time}`:'—';
-  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));const m3Details=Array.isArray(f.M3_details)?f.M3_details:[];$('#m3Card').textContent=m3Details.length?m3Details.map(x=>`${x.triple} (${Number(x.collapses||0)} раз)`).join(' / '):sig(f.M3);$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';
+  [['#m1Card',f.M1],['#m2Card',f.M2_ready],['#m3Card',f.M3],['#m4Card',f.M4_leaders],['#m6Card',f.M6_REPEAT_FAMILY_150]].forEach(([id,v])=>$(id).textContent=sig(v));$('#m5Card').textContent=m5.signal?'🚨 СИГНАЛ':'NO SIGNAL';
   const m4Label=$('#m4Card')?.previousElementSibling;if(m4Label)m4Label.textContent='M4 · Δ ↔ зеркало · 1000';renderM4Detail();
   $('#m6Family').textContent=m6.family||'—';$('#m6Count').textContent=m6.count??'—';$('#m6Trigger').textContent=m6.trigger?'ДА':'НЕТ';$('#m6Result').textContent=sig(m6.signal);
   $('#m6Occurrences').innerHTML=(m6.occurrences||[]).map((o,i)=>`<span class="chip">${i+1}. №${o.draw} ${o.combo}</span>`).join(' ')||'<span class="muted">Нет</span>';
