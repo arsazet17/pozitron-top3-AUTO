@@ -1,0 +1,81 @@
+name: Apply M7-R3 UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-m7-r3-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch UI and cache
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new, label):
+              p=Path(path); s=p.read_text(encoding='utf-8')
+              if new in s:
+                  print(label, 'already applied'); return
+              if old not in s:
+                  raise SystemExit(label+': source not found')
+              p.write_text(s.replace(old,new,1),encoding='utf-8')
+              print(label,'patched')
+
+          rep('analyzer/app.js',"const VER='0.7.2'","const VER='0.7.3'",'app version')
+          rep('analyzer/index.html','<div class="version" id="version">v0.7.2</div>','<div class="version" id="version">v0.7.3</div>','html version')
+          rep('analyzer/index.html','<div class="method accent-method"><span>M7 · Нечётные тройни · 500</span><b id="m5Card">—</b></div>','<div class="method accent-method"><span>M7 + R2/R3 · Нечётные тройни · 500</span><b id="m5Card">—</b></div>','M7 card label')
+          rep('analyzer/index.html','<div><b>M7</b><p>Ровно 500 предыдущих тиражей. Семьи X и P складываются по позициям mod10. Учитываются только 111/333/555/777/999. Сигнал — только одна и та же тройня на 2+ соседних тиражах подряд.</p></div>','<div><b>M7 + M7-R2/R3</b><p>M7 BASE — структурный сканер: X складывается всеми перестановками с ровно 500 предыдущими P, учитываются 111/333/555/777/999 и серии одинаковой тройни 2+ подряд. M7-R2 берёт только серию ровно 2 и требует, чтобы P1+P2 в исходном точном порядке дало XXX. M7-R3 дополнительно требует lag от P2 до X = 31–33 и даёт редкий экспериментальный маячок на факт появления тройной. pairTriple не считается автоматическим прогнозом конкретной тройни.</p></div>','M7 rules')
+          rep('analyzer/index.html','<script type="module" src="app.js?v=072-m6-r2"></script>','<script type="module" src="app.js?v=073-m7-r3"></script>','app query')
+          rep('analyzer/index.html','<script type="module" src="m7.js?v=068-m7-odd500"></script>','<script type="module" src="m7.js?v=073-m7-r3"></script>','m7 query')
+          rep('analyzer/sw.js',"const CACHE='top3-analyzer-v0.7.2-m6-r2';","const CACHE='top3-analyzer-v0.7.3-m7-r3';",'sw cache')
+          rep('analyzer/sw.js',"'./app.js?v=072-m6-r2',","'./app.js?v=073-m7-r3',",'sw app query')
+          rep('analyzer/sw.js',"'./m7.js?v=068-m7-odd500',","'./m7.js?v=073-m7-r3',",'sw m7 query')
+          PY
+
+      - name: Validate M7-R3
+        shell: bash
+        run: |
+          node --check analyzer/m7.js
+          node --check analyzer/app.js
+          node --check analyzer/sw.js
+          node --input-type=module - <<'NODE'
+          globalThis.document={readyState:'loading',addEventListener(){},querySelector(){return null}};
+          const m=await import('./analyzer/m7.js');
+          const X={draw:200,combo:'772'};
+          const series=[{triple:'999',length:2,members:[{draw:167,combo:'227'},{draw:168,combo:'227'}]}];
+          const r2=m.computeM7R2(X,series);
+          const r3=m.computeM7R3(X,r2);
+          if(r2.length!==1||r2[0].pairTriple!=='444'||r2[0].lag!==32)throw new Error('M7-R2 test failed');
+          if(r3.length!==1||r3[0].lag!==32||r3[0].forecast!=='ТРОЙНАЯ')throw new Error('M7-R3 test failed');
+          if(m.exactAdd('952','592')!=='444')throw new Error('exactAdd test failed');
+          console.log('M7-R3 PASS');
+          NODE
+          grep -Fq 'M7 + R2/R3' analyzer/index.html
+          grep -Fq 'v0.7.3' analyzer/index.html
+          grep -Fq 'm7.js?v=073-m7-r3' analyzer/sw.js
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-m7-r3-ui.yml
+          git add analyzer/app.js analyzer/index.html analyzer/sw.js
+          git commit -m 'M7: expose R2/R3 rare beacon and bracket forecast'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+# retrigger 2026-09-26
