@@ -18,7 +18,7 @@
   <aside class="sidebar">
     <div class="brand">
       <img class="app-avatar" src="../assets/top3-777-original.png?v=062-final-2129" alt="TOP-3 777">
-      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.7.3</div></div>
+      <div><h1>TOP‑3 Analyzer</h1><div class="version" id="version">v0.7.4</div></div>
     </div>
 
     <nav class="nav primary-nav">
@@ -263,6 +263,19 @@
           <div><span>Окно</span><b>Последние 20 тиражей</b></div>
           <div><span>Порядок</span><b>Frozen ДО → факт → проверка → Frozen после</b></div>
         </div>
+        <div class="section-title compact" style="margin-top:1rem">
+          <div><div class="kicker">Все методы · anti-leakage</div><h3>Архив прогнозов M1–M7</h3></div>
+          <div class="archive-summary" id="allMethodsArchiveSummary">Расчёт…</div>
+        </div>
+        <div class="muted" style="margin-bottom:.75rem">Каждая строка рассчитана только по данным ДО указанного факта. В архив входят M1, M2, M3, M4, M5, M6, M6-R2, M7 BASE, M7-R2, M7-R3 и итоговый Frozen.</div>
+        <div class="table-wrap archive-table">
+          <table>
+            <thead><tr><th>Тираж</th><th>Факт</th><th>M1</th><th>M2</th><th>M3</th><th>M4</th><th>M5</th><th>M6</th><th>M6-R2</th><th>M7 BASE</th><th>M7-R2</th><th>M7-R3</th><th>Frozen</th></tr></thead>
+            <tbody id="allMethodsArchiveBody"><tr><td colspan="13">Расчёт архива всех методов…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="section-title compact" style="margin-top:1.25rem"><h3>Контроль Frozen ДО → факт → Frozen после</h3></div>
         <div class="table-wrap archive-table">
           <table>
             <thead><tr><th>№</th><th>Дата</th><th>Время</th><th>Факт</th><th>Frozen ДО</th><th>Проверка</th><th>Frozen после</th></tr></thead>
@@ -331,7 +344,8 @@
     </main>
   </section>
 </div>
-<script type="module" src="app.js?v=073-m7-r3"></script>
+<script type="module" src="app.js?v=074-archive-all-methods"></script>
   <script type="module" src="m7.js?v=073-m7-r3"></script>
+  <script type="module" src="archive-all.js?v=074-archive-all-methods"></script>
 </body>
 </html>
