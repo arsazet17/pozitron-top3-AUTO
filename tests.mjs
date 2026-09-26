@@ -4,7 +4,7 @@ import {CHAT_MASTER_SCHEMA,computeChatForecast,deltaCombo,family} from "./js/eng
 import {createMirrorState} from "./js/engine/mirror15.js";
 import {
   computeTripleChat,M2_MAP,pairEval,TRIPLE_CHAT_RULE_CODE,TRIPLE_CHAT_SEED_ID,
-  SERIAL_LEADER_RULE_START_ID,SERIAL_LEADER_TTL,advanceSerialLeaders
+  SERIAL_LEADER_TTL,advanceSerialLeaders
 } from "./js/engine/triples-chat.js";
 import {ALL_LINKS_RULE_CODE,computeAllLinksForRows,computeTripleAllLinks} from "./js/engine/triple-all-links.js";
 import {
@@ -37,25 +37,34 @@ ok(!(f.master?.ranked||[]).some(x=>(x.groups||[]).includes("MIRROR")),"Mirror mu
 ok(Array.isArray(mirror.lastSignals),"Mirror subsystem must stay operational separately");
 ok(rules.mirror?.independentFromMaster===true,"Mirror must be explicitly independent from MASTER");
 
-ok(TRIPLE_CHAT_RULE_CODE==="TOP3-3METHODS-SERIAL-LEADER-13.09.2026","triple rules code");
-ok(SERIAL_LEADER_RULE_START_ID===268003,"serial leader must start prospectively after №268003 fact");
+ok(TRIPLE_CHAT_RULE_CODE==="YULIA-TOP3-M1M2M3-CANONICAL-1.2.14","canonical Yulia triple rules code");
 ok(SERIAL_LEADER_TTL===5,"serial leader TTL must be exactly 5 draws");
 ok(M2_MAP["999"]?.join("/")==="482/628","M2 999 family map must stay frozen");
 ok(pairEval("915","268").triples.includes("777"),"M3 known branch 915+268 must produce 777");
 ok(pairEval("111","999").blocked===true,"exact XXX must trigger BLOCK before permutations");
 
 const preSerial=advanceSerialLeaders([],{},["444"],268002);
-ok(preSerial.active.length===0&&preSerial.streaks["444"]===1,"first addition birth before activation must only arm streak");
+ok(preSerial.active.length===0&&preSerial.streaks["444"]?.len===1&&preSerial.streaks["444"]?.lastId===268002,"first addition birth must only arm streak");
 const serial2=advanceSerialLeaders(preSerial.active,preSerial.streaks,["444"],268003);
 ok(serial2.active.length===1&&serial2.active[0].triple==="444","same addition triple on second consecutive draw must activate leader");
-ok(serial2.active[0].rem===5&&serial2.active[0].streak===2,"new serial leader must start at rem5 / streak2");
+ok(serial2.active[0].rem===5&&serial2.streaks["444"]?.len===2&&serial2.active[0].startedAt===268003,"new serial leader must start at rem5 / streak2");
 const serialCarry=advanceSerialLeaders(serial2.active,serial2.streaks,[],268004);
 ok(serialCarry.active[0]?.rem===4,"serial leader must carry forward without counting carry as a new birth");
 ok(Object.keys(serialCarry.streaks).length===0,"missing addition birth must break consecutive streak");
 const serialRestart=advanceSerialLeaders(serialCarry.active,serialCarry.streaks,["444"],268005);
-ok(serialRestart.active[0]?.rem===3&&serialRestart.streaks["444"]===1,"non-consecutive addition birth must not refresh leader");
+ok(serialRestart.active[0]?.rem===3&&serialRestart.streaks["444"]?.len===1,"non-consecutive addition birth must not refresh leader");
 const serialContinue=advanceSerialLeaders(serial2.active,serial2.streaks,["444"],268004);
-ok(serialContinue.active[0]?.rem===5&&serialContinue.active[0]?.streak===3,"third consecutive addition birth must refresh leader back to rem5");
+ok(serialContinue.active[0]?.rem===4&&serialContinue.streaks["444"]?.len===3,"third consecutive addition birth must not extend the five-draw window");
+ok(serialContinue.active[0]?.startedAt===268003,"continuing births must preserve the activation draw");
+const serialGap=advanceSerialLeaders([],preSerial.streaks,["444"],268004);
+ok(serialGap.active.length===0&&serialGap.streaks["444"]?.len===1,"nonadjacent draw IDs must not activate a leader");
+let serialExpiry=serial2;
+for(let id=268004;id<=268008;id++)serialExpiry=advanceSerialLeaders(serialExpiry.active,serialExpiry.streaks,["444"],id);
+ok(serialExpiry.active.length===0&&serialExpiry.streaks["444"]?.len===7,"continuous births must not revive an expired leader");
+const serialBreak=advanceSerialLeaders(serialExpiry.active,serialExpiry.streaks,[],268009);
+const serialRearm=advanceSerialLeaders(serialBreak.active,serialBreak.streaks,["444"],268010);
+const serialNew=advanceSerialLeaders(serialRearm.active,serialRearm.streaks,["444"],268011);
+ok(serialNew.active.length===1&&serialNew.active[0].rem===5&&serialNew.active[0].startedAt===268011,"a fresh two-draw streak after a break must activate a new leader");
 
 ok(ALL_LINKS_RULE_CODE==="TOP3-ALL-LINKS-V1-14SEP2026-0255","all-links transfer code");
 const auditRows=records.filter(r=>{const k=`${r.date} ${r.time}`;return k>="2026-09-11 22:55"&&k<="2026-09-14 01:55"});
