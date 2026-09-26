@@ -1,9 +1,8 @@
 name: Replace Analyzer M4 with diff-mirror 1000
 
+# Historical one-time migration: run explicitly to avoid reapplying old UI versions.
 on:
-  push:
-    paths:
-      - '.github/workflows/replace-m4-diff-mirror-1000.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,31 +29,31 @@ jobs:
           s=s.replace("const VER='0.6.8'", "const VER='0.6.9'", 1)
 
           helper=r'''function renderM4Detail(){
-  const box=$('#m4Detail'),m=authoritative?.m4;if(!box)return;
-  if(!m?.ok){box.innerHTML=`<div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div><div class="muted">${esc(m?.reason||'Нет данных')}</div>`;return}
-  const signals=m.signals||[];
-  const summary=signals.length?signals.map(t=>`<span class="chip"><b>${esc(t)}</b></span>`).join(' '):'<b>СИГНАЛА НЕТ.</b>';
-  const rows=(m.candidates||[]).map(c=>{
-    if(!c.found)return `<tr><td><b>${c.triple}</b></td><td colspan="6" class="muted">Нет этой тройни в последних 1000 тиражах</td></tr>`;
-    const dir=c.match?(c.diffToMirror&&c.mirrorToDiff?'Δ→зеркало / зеркало→Δ':c.diffToMirror?'Δ→зеркало':'зеркало→Δ'):'—';
-    return `<tr class="${c.match?'hit-row':''}"><td><b>${c.triple}</b></td><td>№${c.row?.id??'—'}<br><span class="muted">${esc(c.row?.date||'')} ${esc(c.row?.time||'')}</span></td><td class="mono">${esc(c.previous?.code||'—')} → ${esc(c.row?.code||'—')}</td><td class="mono"><b>${esc(c.diff||'—')}</b><br><span class="muted">family ${esc(c.diffFamily||'—')}</span></td><td class="mono"><b>${esc(c.mirror||'—')}</b><br><span class="muted">family ${esc(c.mirrorFamily||'—')}</span></td><td>${c.match?'✅ СХЛОПНУЛОСЬ':'—'}</td><td>${dir}</td></tr>`;
-  }).join('');
-  box.innerHTML=`
-    <div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div>
-    <div class="audit-grid" style="margin-bottom:1rem">
-      <div><span>Последний факт</span><b>${esc(m.latest?.code||'—')}</b><small>№${m.latest?.id??'—'}</small></div>
-      <div><span>Предыдущий</span><b>${esc(m.previous?.code||'—')}</b><small>№${m.previous?.id??'—'}</small></div>
-      <div><span>Последняя Δ</span><b>${esc(m.currentDiff||'—')}</b><small>family ${esc(m.currentDiffFamily||'—')}</small></div>
-      <div><span>Зеркало Δ</span><b>${esc(m.currentMirror||'—')}</b><small>family ${esc(m.currentMirrorFamily||'—')}</small></div>
-      <div><span>Окно</span><b>${m.windowSize||0} тиражей</b><small>№${m.windowStart?.id??'—'} → №${m.windowEnd?.id??'—'}</small></div>
-      <div><span>Итог M4</span><b>${signals.length?signals.join(' / '):'СИГНАЛА НЕТ'}</b><small>Прогнозируется тройня, чья пара Δ/зеркало схлопнулась</small></div>
-    </div>
-    <div style="margin-bottom:1rem"><b>ИТОГОВЫЙ СИГНАЛ M4:</b><div style="margin-top:.55rem">${summary}</div></div>
-    <div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Последнее появление /1000</th><th>Переход</th><th>Δ тройни</th><th>Зеркало Δ</th><th>Статус</th><th>Направление</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted" style="margin-top:1rem">Сравнение только по family: порядок цифр не важен. Проверка: последняя Δ ↔ зеркало Δ тройни или зеркало последней Δ ↔ Δ тройни. Для каждой тройни используется только её самое последнее появление внутри текущих 1000 тиражей.</div>`;
-}
-
-'''
+            const box=$('#m4Detail'),m=authoritative?.m4;if(!box)return;
+            if(!m?.ok){box.innerHTML=`<div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div><div class="muted">${esc(m?.reason||'Нет данных')}</div>`;return}
+            const signals=m.signals||[];
+            const summary=signals.length?signals.map(t=>`<span class="chip"><b>${esc(t)}</b></span>`).join(' '):'<b>СИГНАЛА НЕТ.</b>';
+            const rows=(m.candidates||[]).map(c=>{
+              if(!c.found)return `<tr><td><b>${c.triple}</b></td><td colspan="6" class="muted">Нет этой тройни в последних 1000 тиражах</td></tr>`;
+              const dir=c.match?(c.diffToMirror&&c.mirrorToDiff?'Δ→зеркало / зеркало→Δ':c.diffToMirror?'Δ→зеркало':'зеркало→Δ'):'—';
+              return `<tr class="${c.match?'hit-row':''}"><td><b>${c.triple}</b></td><td>№${c.row?.id??'—'}<br><span class="muted">${esc(c.row?.date||'')} ${esc(c.row?.time||'')}</span></td><td class="mono">${esc(c.previous?.code||'—')} → ${esc(c.row?.code||'—')}</td><td class="mono"><b>${esc(c.diff||'—')}</b><br><span class="muted">family ${esc(c.diffFamily||'—')}</span></td><td class="mono"><b>${esc(c.mirror||'—')}</b><br><span class="muted">family ${esc(c.mirrorFamily||'—')}</span></td><td>${c.match?'✅ СХЛОПНУЛОСЬ':'—'}</td><td>${dir}</td></tr>`;
+            }).join('');
+            box.innerHTML=`
+              <div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div>
+              <div class="audit-grid" style="margin-bottom:1rem">
+                <div><span>Последний факт</span><b>${esc(m.latest?.code||'—')}</b><small>№${m.latest?.id??'—'}</small></div>
+                <div><span>Предыдущий</span><b>${esc(m.previous?.code||'—')}</b><small>№${m.previous?.id??'—'}</small></div>
+                <div><span>Последняя Δ</span><b>${esc(m.currentDiff||'—')}</b><small>family ${esc(m.currentDiffFamily||'—')}</small></div>
+                <div><span>Зеркало Δ</span><b>${esc(m.currentMirror||'—')}</b><small>family ${esc(m.currentMirrorFamily||'—')}</small></div>
+                <div><span>Окно</span><b>${m.windowSize||0} тиражей</b><small>№${m.windowStart?.id??'—'} → №${m.windowEnd?.id??'—'}</small></div>
+                <div><span>Итог M4</span><b>${signals.length?signals.join(' / '):'СИГНАЛА НЕТ'}</b><small>Прогнозируется тройня, чья пара Δ/зеркало схлопнулась</small></div>
+              </div>
+              <div style="margin-bottom:1rem"><b>ИТОГОВЫЙ СИГНАЛ M4:</b><div style="margin-top:.55rem">${summary}</div></div>
+              <div class="table-wrap"><table><thead><tr><th>Тройня</th><th>Последнее появление /1000</th><th>Переход</th><th>Δ тройни</th><th>Зеркало Δ</th><th>Статус</th><th>Направление</th></tr></thead><tbody>${rows}</tbody></table></div>
+              <div class="muted" style="margin-top:1rem">Сравнение только по family: порядок цифр не важен. Проверка: последняя Δ ↔ зеркало Δ тройни или зеркало последней Δ ↔ Δ тройни. Для каждой тройни используется только её самое последнее появление внутри текущих 1000 тиражей.</div>`;
+          }
+          
+          '''
           if 'function renderM4Detail(){' not in s:
               marker='function renderMain(){'
               if marker not in s: raise SystemExit('renderMain marker not found')
@@ -72,9 +71,9 @@ jobs:
           if 'id="m4Detail"' not in s:
               marker='        <div class="card" id="m7Detail">'
               block='''        <div class="card" id="m4Detail">
-          <div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div>
-          <div class="muted">Расчёт загружается…</div>
-        </div>\n\n'''
+                    <div class="section-title compact"><div><div class="kicker">M4 · Δ ↔ зеркало</div><h3>Последние значения каждой тройни · окно 1000</h3></div></div>
+                    <div class="muted">Расчёт загружается…</div>
+                  </div>\n\n'''
               if marker not in s: raise SystemExit('m7Detail marker not found')
               s=s.replace(marker,block+marker,1)
           s=s.replace('<div><b>M4</b><p>Цикл от фактической тройни до следующей; все family-связи и лидеры.</p></div>',

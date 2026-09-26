@@ -1,9 +1,8 @@
 name: Add Analyzer M7 odd triples 500
 
+# Historical one-time migration: run explicitly to avoid reapplying old UI versions.
 on:
-  push:
-    paths:
-      - '.github/workflows/add-m7-odd500.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -31,9 +30,9 @@ jobs:
           if 'id="m7Detail"' not in s:
               marker='        <div class="detail-grid">'
               block='''        <div class="card" id="m7Detail">
-          <div class="section-title compact"><div><div class="kicker">M7 · нечётные тройни</div><h3>500 предыдущих · серия 2+</h3></div></div>
-          <div class="muted">Расчёт загружается…</div>
-        </div>\n\n'''
+                    <div class="section-title compact"><div><div class="kicker">M7 · нечётные тройни</div><h3>500 предыдущих · серия 2+</h3></div></div>
+                    <div class="muted">Расчёт загружается…</div>
+                  </div>\n\n'''
               if marker not in s:
                   raise SystemExit('detail-grid marker not found')
               s=s.replace(marker,block+marker,1)
