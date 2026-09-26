@@ -8,12 +8,19 @@ const HISTORY=20;
 const ODD=['111','333','555','777','999'];
 let busy=false,lastDraw=0;
 const $=s=>document.querySelector(s);
-const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 const uniq=a=>[...new Set((a||[]).filter(Boolean))];
 const triple=x=>/^([0-9])\1\1$/.test(String(x||''));
 const norm=x=>{const draw=Number(x?.draw??x?.id),combo=String(x?.combo??x?.code??((x?.A!=null&&x?.B!=null&&x?.C!=null)?`${x.A}${x.B}${x.C}`:'')).padStart(3,'0').slice(-3);if(!Number.isInteger(draw)||!/^\d{3}$/.test(combo))return null;return{draw,combo,date:String(x.date||''),time:String(x.time||'').slice(0,5)}};
 const perms=v=>{const a=String(v||'').padStart(3,'0').slice(-3).split(''),s=new Set();for(let i=0;i<3;i++)for(let j=0;j<3;j++)if(j!==i)for(let k=0;k<3;k++)if(k!==i&&k!==j)s.add(a[i]+a[j]+a[k]);return[...s]};
 const add=(a,b)=>[0,1,2].map(i=>(Number(a[i])+Number(b[i]))%10).join('');
+
+function fullCompat(fullCore){
+  if(!fullCore)return null;
+  if(Array.isArray(fullCore.combos))return fullCore;
+  if(typeof fullCore.data==='string')return {...fullCore,combos:fullCore.data.match(/.{3}/g)||[]};
+  return fullCore;
+}
 
 function m7Base(records){
   const rows=(records||[]).map(norm).filter(Boolean).sort((a,b)=>a.draw-b.draw);
@@ -40,18 +47,19 @@ function m7Cell(x,fact){if(!x.signals.length)return'<span class="muted">—</spa
 function m7r2Cell(x){if(!x.r2.length)return'<span class="muted">NO SIGNAL</span>';return x.r2.map(s=>`<span class="mono">${s.m7Triple}→${s.pairTriple}</span><br><small>lag ${s.lag}</small>`).join('<hr>')}
 
 async function loadJSON(url){const r=await fetch(`${url}?v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}
-function fullForBeacon(prefix){const last=prefix.at(-1);if(!last)return{fromDraw:0,combos:[]};const tail=prefix.slice(-50);return{fromDraw:tail[0]?.draw||0,combos:tail.map(x=>x.combo)}}
+function fullForBeacon(prefix){const tail=prefix.slice(-50);return{fromDraw:tail[0]?.draw||0,combos:tail.map(x=>x.combo)}}
 
 async function build(){
   if(busy)return;const body=$('#allMethodsArchiveBody'),summary=$('#allMethodsArchiveSummary');if(!body||!summary)return;busy=true;summary.textContent='Расчёт всех методов…';
   try{
-    const [raw,fullCore]=await Promise.all([loadJSON('../data/archive.json'),loadJSON('../data/full-archive/all.json').catch(()=>null)]);
+    const [raw,fullCoreRaw]=await Promise.all([loadJSON('../data/archive.json'),loadJSON('../data/full-archive/all.json').catch(()=>null)]);
+    const fullCore=fullCompat(fullCoreRaw);
     const rows=(raw||[]).map(norm).filter(Boolean).sort((a,b)=>a.draw-b.draw);if(rows.length<2)throw Error('Недостаточно фактов');
     const newest=rows.at(-1).draw;if(newest===lastDraw&&body.children.length){summary.textContent=`${Math.min(HISTORY,rows.length-1)} последних проверок · M1–M7`;busy=false;return}lastDraw=newest;
     const start=Math.max(1,rows.length-HISTORY),out=[];
     for(let i=start;i<rows.length;i++){
       const fact=rows[i],prefix=rows.slice(0,i);
-      const tc=computeTripleChat(prefix,fullCore||null),snap=tc.snapshot||{};
+      const tc=computeTripleChat(prefix,fullCore),snap=tc.snapshot||{};
       const m1=uniq(snap.m1||[]),m2=uniq((snap.m2||[]).map(x=>x.triple)),m3=uniq((snap.m3||[]).map(x=>x.triple)),frozen=uniq(snap.frozen||[]);
       const m4=computeTripleAllLinks(prefix),m4sig=uniq(m4?.signals||[]);
       const m6=computeM6V3Strict({records:prefix}).current?.triples||[];
