@@ -1,0 +1,56 @@
+name: Validate maintenance workflow syntax
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: [codex/fix-top3-workflow-syntax]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install YAML parser
+        run: python -m pip install PyYAML==6.0.2
+      - name: Parse YAML and compile embedded scripts without executing migrations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          import yaml
+
+          names = [
+              'add-m7-odd500.yml',
+              'fix-analyzer-pwa-icons.yml',
+              'replace-m4-diff-mirror-1000.yml',
+          ]
+          for name in names:
+              path = Path('.github/workflows') / name
+              workflow = yaml.load(path.read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
+              assert set(workflow['on']) == {'workflow_dispatch'}, name
+              count = 0
+              for job in workflow['jobs'].values():
+                  for step in job['steps']:
+                      script = step.get('run')
+                      if script is None:
+                          continue
+                      subprocess.run(['bash', '-n'], input=script, text=True, check=True)
+                      for source in re.findall(r"python3? - <<'PY'\n(.*?)\nPY(?:\n|$)", script, re.S):
+                          compile(source, str(path), 'exec')
+                          count += 1
+              assert count > 0, f'{name}: missing Python heredoc'
+              print(f'{name}: YAML, shell and {count} Python script(s) OK')
+          PY
