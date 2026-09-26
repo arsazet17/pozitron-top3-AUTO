@@ -86,8 +86,8 @@ if(currentAllLinks.total>0){const shareSum=currentAllLinks.ranking.reduce((a,b)=
 ok(currentAllLinks.links?.length===currentAllLinks.total,"current all-links must expose full journal");
 ok(currentAllLinks.facts?.length===currentAllLinks.cycleRows,"current all-links must expose per-fact statistics");
 
-ok(M6_V3_RULE_CODE==="TOP3-M6-REPEAT-FAMILY-150-V3-STRICT-20.09.2026","M6 V3 strict rule code");
-ok(M6_V3_WINDOW===150,"M6 V3 must use exactly sliding window150");
+ok(M6_V3_RULE_CODE==="TOP3-M6-REPEAT-FAMILY-1000-V3-STRICT-23.09.2026","M6 V3 strict rule code");
+ok(M6_V3_WINDOW===1000,"M6 V3 must use exactly sliding window1000");
 ok(M6_V3_FORWARD_START_SOURCE_ID===268327,"M6 V3 forward must start from fact №268327");
 ok(m6Family("173")==="137"&&m6Family("713")==="137"&&m6Family("371")==="137"&&m6Family("137")==="137","M6 V3 family must ignore digit order");
 const self137=m6SelfResults("137");
@@ -110,11 +110,13 @@ const hitAfter137=computeM6V3Strict({records:[mk(268327,"173"),mk(268328,"713"),
 ok(hitAfter137.current?.prevCheck?.startsWith("✅ HIT 444"),"M6 V3 must check old Frozen before calculating the new fact");
 
 const slide=[mk(268327,"173"),mk(268328,"713")];
-for(let id=268329;id<=268476;id++)slide.push(mk(id,"000"));
-slide.push(mk(268477,"371"));
+for(let id=268329;id<=269326;id++)slide.push(mk(id,"000"));
+const atBoundary=computeM6V3Strict({records:[...slide.slice(0,-1),mk(269326,"371")]});
+ok(atBoundary.current?.windowSize===1000&&atBoundary.current?.count===3&&atBoundary.current?.trigger,"M6 V3 must include the oldest draw at the 1000-draw boundary");
+slide.push(mk(269327,"371"));
 const slid=computeM6V3Strict({records:slide});
-ok(slid.current?.windowSize===150,"M6 V3 current window must be exactly 150 when enough facts exist");
-ok(slid.current?.count===2&&!slid.current?.trigger,"M6 V3 must forget family occurrences that left window150");
+ok(slid.current?.windowSize===1000,"M6 V3 current window must be exactly 1000 when enough facts exist");
+ok(slid.current?.count===2&&!slid.current?.trigger,"M6 V3 must forget family occurrences that left window1000");
 ok(!("activeUntil" in (slid.current||{})),"M6 V3 must not contain active_until state");
 
 const family012two=computeM6V3Strict({records:[mk(268327,"021"),mk(268328,"210")]});
