@@ -1,0 +1,77 @@
+name: Apply all-method forecast archive
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-archive-all-methods.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Analyzer archive UI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new, label):
+              p=Path(path); s=p.read_text(encoding='utf-8')
+              if new in s:
+                  print(label, 'already applied'); return
+              if old not in s:
+                  raise SystemExit(label+': source not found')
+              p.write_text(s.replace(old,new,1),encoding='utf-8')
+              print(label,'patched')
+
+          rep('analyzer/app.js',"const VER='0.7.3'","const VER='0.7.4'",'app version')
+          rep('analyzer/index.html','<div class="version" id="version">v0.7.3</div>','<div class="version" id="version">v0.7.4</div>','html version')
+
+          old='''        <div class="table-wrap archive-table">\n          <table>\n            <thead><tr><th>№</th><th>Дата</th><th>Время</th><th>Факт</th><th>Frozen ДО</th><th>Проверка</th><th>Frozen после</th></tr></thead>\n            <tbody id="archiveBody"></tbody>\n          </table>\n        </div>'''
+          new='''        <div class="section-title compact" style="margin-top:1rem">\n          <div><div class="kicker">Все методы · anti-leakage</div><h3>Архив прогнозов M1–M7</h3></div>\n          <div class="archive-summary" id="allMethodsArchiveSummary">Расчёт…</div>\n        </div>\n        <div class="muted" style="margin-bottom:.75rem">Каждая строка рассчитана только по данным ДО указанного факта. В архив входят M1, M2, M3, M4, M5, M6, M6-R2, M7 BASE, M7-R2, M7-R3 и итоговый Frozen.</div>\n        <div class="table-wrap archive-table">\n          <table>\n            <thead><tr><th>Тираж</th><th>Факт</th><th>M1</th><th>M2</th><th>M3</th><th>M4</th><th>M5</th><th>M6</th><th>M6-R2</th><th>M7 BASE</th><th>M7-R2</th><th>M7-R3</th><th>Frozen</th></tr></thead>\n            <tbody id="allMethodsArchiveBody"><tr><td colspan="13">Расчёт архива всех методов…</td></tr></tbody>\n          </table>\n        </div>\n\n        <div class="section-title compact" style="margin-top:1.25rem"><h3>Контроль Frozen ДО → факт → Frozen после</h3></div>\n        <div class="table-wrap archive-table">\n          <table>\n            <thead><tr><th>№</th><th>Дата</th><th>Время</th><th>Факт</th><th>Frozen ДО</th><th>Проверка</th><th>Frozen после</th></tr></thead>\n            <tbody id="archiveBody"></tbody>\n          </table>\n        </div>'''
+          rep('analyzer/index.html',old,new,'all-method archive table')
+
+          rep('analyzer/index.html','<script type="module" src="app.js?v=073-m7-r3"></script>','<script type="module" src="app.js?v=074-archive-all-methods"></script>','app query')
+          rep('analyzer/index.html','<script type="module" src="m7.js?v=073-m7-r3"></script>','<script type="module" src="m7.js?v=073-m7-r3"></script>\n  <script type="module" src="archive-all.js?v=074-archive-all-methods"></script>','archive script')
+
+          rep('analyzer/sw.js',"const CACHE='top3-analyzer-v0.7.3-m7-r3';","const CACHE='top3-analyzer-v0.7.4-archive-all-methods';",'sw cache')
+          rep('analyzer/sw.js',"'./app.js?v=073-m7-r3',","'./app.js?v=074-archive-all-methods',",'sw app')
+          p=Path('analyzer/sw.js'); s=p.read_text(encoding='utf-8')
+          if "'./archive-all.js?v=074-archive-all-methods'," not in s:
+              marker="  './m7.js?v=073-m7-r3',\n"
+              if marker not in s: raise SystemExit('sw m7 marker not found')
+              s=s.replace(marker,marker+"  './archive-all.js?v=074-archive-all-methods',\n",1)
+              p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Validate archive module
+        shell: bash
+        run: |
+          node --check analyzer/archive-all.js
+          node --check analyzer/app.js
+          node --check analyzer/sw.js
+          grep -Fq 'Архив прогнозов M1–M7' analyzer/index.html
+          grep -Fq 'allMethodsArchiveBody' analyzer/index.html
+          grep -Fq 'archive-all.js?v=074-archive-all-methods' analyzer/index.html
+          grep -Fq "const VER='0.7.4'" analyzer/app.js
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-archive-all-methods.yml
+          git add analyzer/app.js analyzer/index.html analyzer/sw.js analyzer/archive-all.js
+          git commit -m 'Archive: add forecasts for all methods M1-M7'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
