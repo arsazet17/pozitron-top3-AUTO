@@ -2,7 +2,7 @@
   "schema": "chat-master-v1",
   "target": {
     "date": "2026-09-29",
-    "time": "01:25"
+    "time": "03:25"
   },
   "lastFact": "542",
   "master": {
@@ -5440,10 +5440,67 @@
     "master": "independent groups MAIN/ALGORITHM/APP_CORE/SHIFT; rank points 3/2/1; no double count",
     "noLeakage": true
   },
-  "key": "2026-09-29|01:25",
+  "key": "2026-09-29|03:25",
   "issuedAt": "2026-09-28T22:01:54.790Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
-  "mirror": []
+  "factAfter": "288",
+  "factAt": "2026-09-29 03:25",
+  "audit": {
+    "fact": "288",
+    "family": "288",
+    "master": {
+      "hit": false,
+      "exact": false,
+      "families": [
+        "368",
+        "358",
+        "567"
+      ]
+    },
+    "main": {
+      "hit": false,
+      "seq": 1,
+      "td": 0,
+      "classification": "single-source RAW miss"
+    },
+    "algorithm": {
+      "hit": false,
+      "relations": []
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "835"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "2": {
+        "seq": 34,
+        "seqTotal": 103,
+        "td": 14,
+        "tdTotal": 58
+      },
+      "8": {
+        "seq": 34,
+        "seqTotal": 103,
+        "td": 16,
+        "tdTotal": 58
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "single-source RAW miss",
+    "workError": "MASTER MISS — сохранить freeze; проверить RAW/relations/groups; правила не менять по одному факту"
+  },
+  "mirror": [],
+  "retargetedFrom": [
+    {
+      "date": "2026-09-29",
+      "time": "01:25",
+      "at": "2026-09-29T00:31:40.868Z",
+      "reason": "official_technical_break"
+    }
+  ]
 }
