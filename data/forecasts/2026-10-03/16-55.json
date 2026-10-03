@@ -7875,9 +7875,107 @@
   },
   "key": "2026-10-03|16:55",
   "issuedAt": "2026-10-03T13:31:52.721Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "582",
+  "factAt": "2026-10-03 16:55",
+  "audit": {
+    "fact": "582",
+    "family": "258",
+    "master": {
+      "hit": false,
+      "exact": false,
+      "families": [
+        "478",
+        "255",
+        "022"
+      ]
+    },
+    "main": {
+      "hit": false,
+      "seq": 2,
+      "td": 2,
+      "classification": "2-source selector-miss"
+    },
+    "algorithm": {
+      "hit": false,
+      "relations": [
+        {
+          "source": "TD",
+          "delta": "325",
+          "family": "258",
+          "repeat": 2,
+          "last": "2023-11-30 10:10",
+          "order": "582",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "582",
+              "count": 1,
+              "last": "2023-11-30 10:10"
+            },
+            {
+              "order": "258",
+              "count": 1,
+              "last": "2023-11-04 07:55"
+            }
+          ]
+        },
+        {
+          "source": "SEQ",
+          "delta": "472",
+          "family": "258",
+          "repeat": 2,
+          "last": "2023-10-15 03:10",
+          "order": "825",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "825",
+              "count": 1,
+              "last": "2023-10-15 03:10"
+            },
+            {
+              "order": "258",
+              "count": 1,
+              "last": "2023-08-24 06:10"
+            }
+          ]
+        }
+      ]
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "552"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "2": {
+        "seq": 46,
+        "seqTotal": 146,
+        "td": 35,
+        "tdTotal": 123
+      },
+      "5": {
+        "seq": 42,
+        "seqTotal": 146,
+        "td": 25,
+        "tdTotal": 123
+      },
+      "8": {
+        "seq": 38,
+        "seqTotal": 146,
+        "td": 44,
+        "tdTotal": 123
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "2-source selector-miss",
+    "workError": "MASTER MISS — сохранить freeze; проверить RAW/relations/groups; правила не менять по одному факту"
+  },
   "mirror": [
     {
       "base": "473",
