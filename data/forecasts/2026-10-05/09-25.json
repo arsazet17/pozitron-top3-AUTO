@@ -7087,9 +7087,102 @@
   },
   "key": "2026-10-05|09:25",
   "issuedAt": "2026-10-05T06:02:14.514Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "036",
+  "factAt": "2026-10-05 09:25",
+  "audit": {
+    "fact": "036",
+    "family": "036",
+    "master": {
+      "hit": true,
+      "exact": false,
+      "families": [
+        "036",
+        "467",
+        "157"
+      ]
+    },
+    "main": {
+      "hit": true,
+      "seq": 3,
+      "td": 3,
+      "classification": "MAIN covered"
+    },
+    "algorithm": {
+      "hit": true,
+      "relations": [
+        {
+          "source": "SEQ",
+          "delta": "674",
+          "family": "036",
+          "repeat": 2,
+          "last": "2026-07-01 09:40",
+          "order": "360",
+          "orderCount": 2,
+          "orders": [
+            {
+              "order": "360",
+              "count": 2,
+              "last": "2026-07-01 09:40"
+            }
+          ]
+        },
+        {
+          "source": "TD",
+          "delta": "237",
+          "family": "036",
+          "repeat": 2,
+          "last": "2023-10-11 15:55",
+          "order": "360",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "360",
+              "count": 1,
+              "last": "2023-10-11 15:55"
+            },
+            {
+              "order": "630",
+              "count": 1,
+              "last": "2023-08-11 07:10"
+            }
+          ]
+        }
+      ]
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "751"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "0": {
+        "seq": 32,
+        "seqTotal": 118,
+        "td": 36,
+        "tdTotal": 124
+      },
+      "3": {
+        "seq": 45,
+        "seqTotal": 118,
+        "td": 38,
+        "tdTotal": 124
+      },
+      "6": {
+        "seq": 30,
+        "seqTotal": 118,
+        "td": 41,
+        "tdTotal": 124
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "MAIN covered",
+    "workError": "MASTER HIT — freeze подтверждён"
+  },
   "mirror": [
     {
       "base": "598",
