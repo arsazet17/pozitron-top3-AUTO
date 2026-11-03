@@ -1333353,9 +1333353,512 @@
         "triple": "000"
       }
     ],
+    "factAfter": "880",
+    "factAt": "2026-11-03 12:55",
+    "audit": {
+      "fact": "880",
+      "family": "088",
+      "master": {
+        "hit": false,
+        "exact": false,
+        "families": [
+          "024",
+          "046",
+          "008"
+        ]
+      },
+      "main": {
+        "hit": false,
+        "seq": 0,
+        "td": 0,
+        "classification": "STRUCTURAL BLIND"
+      },
+      "algorithm": {
+        "hit": false,
+        "relations": []
+      },
+      "appCore": {
+        "hit": false,
+        "exact": false,
+        "combo": "008"
+      },
+      "shift": {
+        "hit": null,
+        "exact": false,
+        "combo": null
+      },
+      "digitSupport": {
+        "0": {
+          "seq": 35,
+          "seqTotal": 122,
+          "td": 47,
+          "tdTotal": 145
+        },
+        "8": {
+          "seq": 35,
+          "seqTotal": 122,
+          "td": 39,
+          "tdTotal": 145
+        }
+      },
+      "assemblyBlind": true,
+      "classification": "STRUCTURAL BLIND",
+      "workError": "MASTER MISS — сохранить freeze; проверить RAW/relations/groups; правила не менять по одному факту"
+    },
+    "detailFile": "data/forecasts/2026-11-03/12-55.json"
+  },
+  {
+    "schema": "chat-master-v1",
+    "key": "2026-11-03|13:25",
+    "target": {
+      "date": "2026-11-03",
+      "time": "13:25"
+    },
+    "issuedAt": "2026-11-03T10:04:56.110Z",
+    "lastFact": "880",
+    "master": {
+      "top3": [
+        {
+          "family": "278",
+          "score": 5,
+          "groups": [
+            "MAIN",
+            "ALGORITHM"
+          ],
+          "evidence": 7,
+          "recency": "2026-06-07 06:40",
+          "orders": {
+            "827": 5
+          },
+          "sources": [
+            {
+              "group": "MAIN",
+              "rank": 2,
+              "points": 2,
+              "order": "827",
+              "evidence": 4,
+              "recency": "2026-06-07 06:40"
+            },
+            {
+              "group": "ALGORITHM",
+              "rank": 1,
+              "points": 3,
+              "order": "827",
+              "evidence": 3,
+              "recency": "2026-06-07 06:40"
+            }
+          ],
+          "groupCount": 2,
+          "order": "827"
+        },
+        {
+          "family": "018",
+          "score": 4,
+          "groups": [
+            "MAIN",
+            "ALGORITHM"
+          ],
+          "evidence": 6,
+          "recency": "2026-09-21 22:25",
+          "orders": {
+            "018": 4
+          },
+          "sources": [
+            {
+              "group": "MAIN",
+              "rank": 1,
+              "points": 3,
+              "order": "018",
+              "evidence": 4,
+              "recency": "2026-09-21 22:25"
+            },
+            {
+              "group": "ALGORITHM",
+              "rank": 3,
+              "points": 1,
+              "order": "018",
+              "evidence": 2,
+              "recency": "2026-09-21 22:25"
+            }
+          ],
+          "groupCount": 2,
+          "order": "018"
+        },
+        {
+          "family": "189",
+          "score": 3,
+          "groups": [
+            "APP_CORE"
+          ],
+          "evidence": 1,
+          "recency": "2026-11-03 12:55",
+          "orders": {
+            "189": 3
+          },
+          "sources": [
+            {
+              "group": "APP_CORE",
+              "rank": 1,
+              "points": 3,
+              "order": "189",
+              "evidence": 1,
+              "recency": "2026-11-03 12:55"
+            }
+          ],
+          "groupCount": 1,
+          "order": "189"
+        }
+      ],
+      "ranked": [
+        {
+          "family": "278",
+          "score": 5,
+          "groups": [
+            "MAIN",
+            "ALGORITHM"
+          ],
+          "evidence": 7,
+          "recency": "2026-06-07 06:40",
+          "orders": {
+            "827": 5
+          },
+          "sources": [
+            {
+              "group": "MAIN",
+              "rank": 2,
+              "points": 2,
+              "order": "827",
+              "evidence": 4,
+              "recency": "2026-06-07 06:40"
+            },
+            {
+              "group": "ALGORITHM",
+              "rank": 1,
+              "points": 3,
+              "order": "827",
+              "evidence": 3,
+              "recency": "2026-06-07 06:40"
+            }
+          ],
+          "groupCount": 2,
+          "order": "827"
+        },
+        {
+          "family": "018",
+          "score": 4,
+          "groups": [
+            "MAIN",
+            "ALGORITHM"
+          ],
+          "evidence": 6,
+          "recency": "2026-09-21 22:25",
+          "orders": {
+            "018": 4
+          },
+          "sources": [
+            {
+              "group": "MAIN",
+              "rank": 1,
+              "points": 3,
+              "order": "018",
+              "evidence": 4,
+              "recency": "2026-09-21 22:25"
+            },
+            {
+              "group": "ALGORITHM",
+              "rank": 3,
+              "points": 1,
+              "order": "018",
+              "evidence": 2,
+              "recency": "2026-09-21 22:25"
+            }
+          ],
+          "groupCount": 2,
+          "order": "018"
+        },
+        {
+          "family": "189",
+          "score": 3,
+          "groups": [
+            "APP_CORE"
+          ],
+          "evidence": 1,
+          "recency": "2026-11-03 12:55",
+          "orders": {
+            "189": 3
+          },
+          "sources": [
+            {
+              "group": "APP_CORE",
+              "rank": 1,
+              "points": 3,
+              "order": "189",
+              "evidence": 1,
+              "recency": "2026-11-03 12:55"
+            }
+          ],
+          "groupCount": 1,
+          "order": "189"
+        },
+        {
+          "family": "357",
+          "score": 2,
+          "groups": [
+            "ALGORITHM"
+          ],
+          "evidence": 2,
+          "recency": "2026-09-24 20:25",
+          "orders": {
+            "375": 2
+          },
+          "sources": [
+            {
+              "group": "ALGORITHM",
+              "rank": 2,
+              "points": 2,
+              "order": "375",
+              "evidence": 2,
+              "recency": "2026-09-24 20:25"
+            }
+          ],
+          "groupCount": 1,
+          "order": "375"
+        },
+        {
+          "family": "006",
+          "score": 1,
+          "groups": [
+            "MAIN"
+          ],
+          "evidence": 4,
+          "recency": "2023-12-02 05:10",
+          "orders": {
+            "060": 1
+          },
+          "sources": [
+            {
+              "group": "MAIN",
+              "rank": 3,
+              "points": 1,
+              "order": "060",
+              "evidence": 4,
+              "recency": "2023-12-02 05:10"
+            }
+          ],
+          "groupCount": 1,
+          "order": "060"
+        }
+      ],
+      "combos": [
+        "827",
+        "018",
+        "189"
+      ],
+      "families": [
+        "278",
+        "018",
+        "189"
+      ]
+    },
+    "methods": {
+      "main": {
+        "signals": {
+          "lastFact": "880",
+          "seq": {
+            "signal": "587",
+            "old": "303",
+            "new": "880",
+            "oldAt": "2026-11-03 12:25",
+            "newAt": "2026-11-03 12:55"
+          },
+          "td": {
+            "signal": "112",
+            "old": "991",
+            "new": "003",
+            "oldAt": "2026-11-01 13:25",
+            "newAt": "2026-11-02 13:25"
+          }
+        },
+        "top3": [
+          {
+            "family": "018",
+            "seq": 1,
+            "td": 3,
+            "total": 4,
+            "last": "2026-09-21 22:25",
+            "order": "018",
+            "count": 2,
+            "orders": [
+              {
+                "order": "018",
+                "count": 2,
+                "last": "2026-09-21 22:25"
+              },
+              {
+                "order": "081",
+                "count": 1,
+                "last": "2026-10-15 03:25"
+              },
+              {
+                "order": "180",
+                "count": 1,
+                "last": "2023-08-15 02:55"
+              }
+            ]
+          },
+          {
+            "family": "278",
+            "seq": 0,
+            "td": 4,
+            "total": 4,
+            "last": "2026-06-07 06:40",
+            "order": "827",
+            "count": 1,
+            "orders": [
+              {
+                "order": "827",
+                "count": 1,
+                "last": "2026-06-07 06:40"
+              },
+              {
+                "order": "287",
+                "count": 1,
+                "last": "2025-01-02 16:25"
+              },
+              {
+                "order": "782",
+                "count": 1,
+                "last": "2023-10-12 16:55"
+              },
+              {
+                "order": "728",
+                "count": 1,
+                "last": "2023-09-06 08:55"
+              }
+            ]
+          },
+          {
+            "family": "006",
+            "seq": 3,
+            "td": 1,
+            "total": 4,
+            "last": "2023-12-02 05:10",
+            "order": "060",
+            "count": 2,
+            "orders": [
+              {
+                "order": "060",
+                "count": 2,
+                "last": "2023-12-02 05:10"
+              },
+              {
+                "order": "006",
+                "count": 1,
+                "last": "2026-04-02 13:40"
+              },
+              {
+                "order": "600",
+                "count": 1,
+                "last": "2023-09-21 16:55"
+              }
+            ]
+          }
+        ],
+        "rawTotals": {
+          "seq": 123,
+          "td": 71
+        },
+        "exactCommon": [
+          "447",
+          "006"
+        ]
+      },
+      "algorithm": {
+        "top3": [
+          {
+            "source": "TD",
+            "delta": "211",
+            "family": "278",
+            "repeat": 3,
+            "last": "2026-06-07 06:40",
+            "order": "827",
+            "orderCount": 1,
+            "orders": [
+              {
+                "order": "827",
+                "count": 1,
+                "last": "2026-06-07 06:40"
+              },
+              {
+                "order": "287",
+                "count": 1,
+                "last": "2025-01-02 16:25"
+              },
+              {
+                "order": "782",
+                "count": 1,
+                "last": "2023-10-12 16:55"
+              }
+            ]
+          },
+          {
+            "source": "TD",
+            "delta": "211",
+            "family": "357",
+            "repeat": 2,
+            "last": "2026-09-24 20:25",
+            "order": "375",
+            "orderCount": 2,
+            "orders": [
+              {
+                "order": "375",
+                "count": 2,
+                "last": "2026-09-24 20:25"
+              }
+            ]
+          },
+          {
+            "source": "TD",
+            "delta": "121",
+            "family": "018",
+            "repeat": 2,
+            "last": "2026-09-21 22:25",
+            "order": "018",
+            "orderCount": 2,
+            "orders": [
+              {
+                "order": "018",
+                "count": 2,
+                "last": "2026-09-21 22:25"
+              }
+            ]
+          }
+        ]
+      },
+      "appCore": {
+        "selected": {
+          "block": "DELTA",
+          "combo": "189",
+          "family": "189",
+          "consensus": false,
+          "recent": 0,
+          "long": 0,
+          "signalSupport": 1,
+          "blockOrder": 1
+        },
+        "mode": "V1 fallback"
+      },
+      "shift": {
+        "combo": null,
+        "status": "нет сигнала",
+        "reason": "Нет подтверждённого маршрута для A",
+        "diagnostics": {}
+      }
+    },
+    "mirror": [],
     "factAfter": null,
     "factAt": null,
     "audit": null,
-    "detailFile": "data/forecasts/2026-11-03/12-55.json"
+    "detailFile": "data/forecasts/2026-11-03/13-25.json"
   }
 ]
