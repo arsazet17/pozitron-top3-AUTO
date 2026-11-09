@@ -6783,8 +6783,111 @@
   },
   "key": "2026-11-09|10:25",
   "issuedAt": "2026-11-09T07:03:35.580Z",
-  "factAfter": null,
-  "factAt": null,
-  "audit": null,
+  "factAfter": "758",
+  "factAt": "2026-11-09 10:25",
+  "audit": {
+    "fact": "758",
+    "family": "578",
+    "master": {
+      "hit": true,
+      "exact": false,
+      "families": [
+        "578",
+        "378",
+        "689"
+      ]
+    },
+    "main": {
+      "hit": true,
+      "seq": 5,
+      "td": 2,
+      "classification": "MAIN covered"
+    },
+    "algorithm": {
+      "hit": true,
+      "relations": [
+        {
+          "source": "SEQ",
+          "delta": "729",
+          "family": "578",
+          "repeat": 4,
+          "last": "2025-09-27 02:40",
+          "order": "875",
+          "orderCount": 2,
+          "orders": [
+            {
+              "order": "875",
+              "count": 2,
+              "last": "2025-09-27 02:40"
+            },
+            {
+              "order": "785",
+              "count": 1,
+              "last": "2025-06-12 04:40"
+            },
+            {
+              "order": "587",
+              "count": 1,
+              "last": "2023-09-25 10:40"
+            }
+          ]
+        },
+        {
+          "source": "TD",
+          "delta": "898",
+          "family": "578",
+          "repeat": 2,
+          "last": "2023-09-21 21:25",
+          "order": "857",
+          "orderCount": 1,
+          "orders": [
+            {
+              "order": "857",
+              "count": 1,
+              "last": "2023-09-21 21:25"
+            },
+            {
+              "order": "758",
+              "count": 1,
+              "last": "2023-08-28 13:25"
+            }
+          ]
+        }
+      ]
+    },
+    "appCore": {
+      "hit": false,
+      "exact": false,
+      "combo": "896"
+    },
+    "shift": {
+      "hit": null,
+      "exact": false,
+      "combo": null
+    },
+    "digitSupport": {
+      "5": {
+        "seq": 39,
+        "seqTotal": 127,
+        "td": 23,
+        "tdTotal": 86
+      },
+      "7": {
+        "seq": 29,
+        "seqTotal": 127,
+        "td": 27,
+        "tdTotal": 86
+      },
+      "8": {
+        "seq": 37,
+        "seqTotal": 127,
+        "td": 23,
+        "tdTotal": 86
+      }
+    },
+    "assemblyBlind": false,
+    "classification": "MAIN covered",
+    "workError": "MASTER HIT — freeze подтверждён"
+  },
   "mirror": []
 }
